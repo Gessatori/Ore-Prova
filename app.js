@@ -370,16 +370,20 @@ function enhanceSingleSelectButtons(selectId){
   const q = tpNormText(searchText);
   const filteredOptions = q ? realOptions.filter(o => tpNormText(o.textContent).includes(q)) : realOptions;
   const firstValue = filteredOptions[0] ? String(filteredOptions[0].value) : '';
+  const selectedOption = realOptions.find(o => String(o.value) === current);
+  const helperHtml = q
+    ? (firstValue
+        ? `<div class="choice-selected">Trovato: <b>${escapeHtml(tpShortChoiceText(filteredOptions[0].textContent))}</b>. Premi Vai per selezionare.</div>`
+        : '<div class="choice-no-results">Nessun risultato trovato.</div>')
+    : (selectedOption
+        ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(tpShortChoiceText(selectedOption.textContent))}</b></div>`
+        : '<div class="choice-selected muted">Scrivi il nome e premi Vai.</div>');
   const searchHtml = `
     <div class="choice-search-row">
       <input id="${searchId}" class="choice-search" type="search" placeholder="Ricerca veloce..." value="${escapeHtml(searchText)}" autocomplete="off">
       <button type="button" id="${goId}" class="choice-go" ${firstValue ? '' : 'disabled'}>Vai</button>
     </div>`;
-  const buttonsHtml = filteredOptions.length ? filteredOptions.map(o=>{
-    const active = String(o.value) === current ? ' active' : '';
-    return `<button type="button" class="choice-btn${active}" data-value="${escapeHtml(o.value)}">${escapeHtml(tpShortChoiceText(o.textContent))}</button>`;
-  }).join('') : '<div class="choice-no-results">Nessun risultato trovato.</div>';
-  box.innerHTML = `${searchHtml}<div class="choice-scroll">${buttonsHtml}</div>`;
+  box.innerHTML = `${searchHtml}${helperHtml}`;
   const chooseValue = (value) => {
     if(!value) return;
     sel.value = String(value);
@@ -412,9 +416,6 @@ function enhanceSingleSelectButtons(selectId){
       if(first) chooseValue(first.value);
     };
   }
-  box.querySelectorAll('button.choice-btn').forEach(btn=>{
-    btn.onclick = () => chooseValue(btn.dataset.value);
-  });
 }
 function enhanceWorkerChoices(){
   ['oreCantiere','oreLav','oreSotto','reqTipo','matCantiere','myMese'].forEach(enhanceSingleSelectButtons);
