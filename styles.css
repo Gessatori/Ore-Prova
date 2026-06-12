@@ -1005,3 +1005,23 @@ body[data-page="worker"] .choice-scroll{
     print-color-adjust:exact !important;
   }
 }
+
+/* FIX collaboratore: solo ricerca + Vai, senza lista completa di pulsanti */
+body[data-page="worker"] .choice-scroll,
+body[data-page="worker"] .choice-btn{
+  display:none !important;
+}
+body[data-page="worker"] .choice-selected{
+  margin-top:8px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:#f8fbff;
+  color:var(--blue);
+  font-size:13px;
+  font-weight:700;
+}
+body[data-page="worker"] .choice-selected.muted{
+  color:var(--muted);
+  background:#fff;
+}
