@@ -193,6 +193,114 @@ window.tpStartVoiceOre = tpStartVoiceOre;
 window.installVoiceOreButtons = installVoiceOreButtons;
 
 
+// Voce IA collaboratore: usa la Edge Function Supabase "voce-ia-ore".
+// La chiave OpenAI resta nei Secrets di Supabase e non viene mai messa nei file pubblici.
+let tpIaOreLastResult = null;
+function tpListaIa(rows, fieldsFn){
+  return (rows || []).filter(r=>r && r.stato === 'attivo').map(r=>fieldsFn(r));
+}
+function tpFindByIdOrName(rows, id, nome, labelFn){
+  const sid = id === null || id === undefined ? '' : String(id);
+  if(sid){
+    const byId = (rows || []).find(r => String(r.id) === sid);
+    if(byId) return byId;
+  }
+  const nn = tpNormText(nome || '');
+  if(nn){
+    const byName = (rows || []).find(r => tpNormText(labelFn(r)).includes(nn) || nn.includes(tpNormText(labelFn(r))));
+    if(byName) return byName;
+  }
+  return null;
+}
+function tpRenderIaPreview(result, testo){
+  const box = $('oreIaPreview');
+  if(!box) return;
+  const rows = [
+    ['Testo capito', testo || '-'],
+    ['Cantiere', result?.cantiere_nome || '-'],
+    ['Lavorazione', result?.lavorazione_nome || '-'],
+    ['Sotto-lavorazione', result?.sotto_lavorazione_nome || '-'],
+    ['Ore', result?.ore ? fmtOre(result.ore) : '-'],
+    ['Note', result?.note || '-']
+  ];
+  box.innerHTML = `<div class="ia-preview">
+    <h3>Risultato Voce IA</h3>
+    <table>${rows.map(r=>`<tr><th>${escapeHtml(r[0])}</th><td>${escapeHtml(r[1])}</td></tr>`).join('')}</table>
+    <p class="muted">Controlla i campi compilati. Se sono corretti, premi Conferma e salva ore.</p>
+    <button type="button" onclick="salvaOreOggi()">Conferma e salva ore</button>
+  </div>`;
+}
+function tpApplicaRisultatoIaOre(result, testo){
+  tpIaOreLastResult = result || null;
+  const activeCantieri = (cache.cantieri || []).filter(c=>c.stato === 'attivo');
+  const activeLav = (cache.lavorazioni || []).filter(l=>l.stato === 'attivo');
+  const cantiere = tpFindByIdOrName(activeCantieri, result?.cantiere_id, result?.cantiere_nome, c=>`${c.codice||''} ${c.nome||''} ${c.localita||''}`);
+  const lav = tpFindByIdOrName(activeLav, result?.lavorazione_id, result?.lavorazione_nome, l=>l.nome||'');
+  if(cantiere) tpSetSelectValue('oreCantiere', cantiere.id);
+  if(lav) tpSetSelectValue('oreLav', lav.id);
+  setTimeout(()=>{
+    const sottoRows = lav ? (cache.sotto || []).filter(s=>String(s.lavorazione_id) === String(lav.id) && s.stato === 'attivo') : (cache.sotto || []).filter(s=>s.stato === 'attivo');
+    const sotto = tpFindByIdOrName(sottoRows, result?.sotto_lavorazione_id, result?.sotto_lavorazione_nome, s=>s.nome||'');
+    if(sotto) tpSetSelectValue('oreSotto', sotto.id);
+    if(result?.ore && $('oreTot')) $('oreTot').value = fmtOre(result.ore);
+    if(result?.note && $('oreNote')) $('oreNote').value = result.note;
+    enhanceWorkerChoices();
+    tpRenderIaPreview(result, testo);
+    const ok = cantiere && lav && sotto && result?.ore;
+    msg($('oreMsg'), ok ? 'Voce IA caricata. Controlla e conferma il salvataggio.' : 'Voce IA caricata, ma manca qualche campo. Controlla e completa prima di salvare.', ok ? 'success' : 'error');
+  }, 120);
+}
+async function tpAnalizzaTestoConIaOre(testo){
+  if(!requireDb()) return;
+  msg($('oreMsg'), 'Sto analizzando con IA...');
+  const payload = {
+    testo,
+    cantieri: tpListaIa(cache.cantieri, c=>({id:c.id, codice:c.codice||'', nome:c.nome||'', localita:c.localita||''})),
+    lavorazioni: tpListaIa(cache.lavorazioni, l=>({id:l.id, nome:l.nome||''})),
+    sotto_lavorazioni: tpListaIa(cache.sotto, s=>({id:s.id, lavorazione_id:s.lavorazione_id, nome:s.nome||''}))
+  };
+  const { data, error } = await db.functions.invoke('voce-ia-ore', { body: payload });
+  if(error) throw error;
+  if(!data || data.error) throw new Error(data?.error || 'Risposta IA vuota');
+  tpApplicaRisultatoIaOre(data.result, testo);
+}
+function tpStartVoiceIaOre(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ msg($('oreMsg'), 'Questo browser non supporta la voce. Prova con Chrome o Safari aggiornato.', 'error'); return; }
+  const rec = new SR();
+  rec.lang = 'it-IT';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  rec.onstart = ()=>msg($('oreMsg'), 'Voce IA: sto ascoltando... parla normalmente.');
+  rec.onerror = e=>msg($('oreMsg'), 'Voce IA non riuscita: ' + (e.error || 'errore'), 'error');
+  rec.onresult = async e=>{
+    const text = e.results?.[0]?.[0]?.transcript || '';
+    try{ await tpAnalizzaTestoConIaOre(text); }
+    catch(err){ msg($('oreMsg'), 'Errore Voce IA: ' + (err.message || err), 'error'); }
+  };
+  rec.start();
+}
+function installVoiceIaOreButton(){
+  if(!document.body || document.body.dataset.page !== 'worker') return;
+  const target = $('oreNote');
+  if(!target || $('btnVoceIaOre')) return;
+  const row = document.createElement('div');
+  row.className = 'row ia-actions';
+  row.innerHTML = `<button type="button" id="btnVoceIaOre">Parla con IA</button>`;
+  target.insertAdjacentElement('afterend', row);
+  $('btnVoceIaOre').onclick = () => tpStartVoiceIaOre();
+  if(!$('oreIaPreview')){
+    const box = document.createElement('div');
+    box.id = 'oreIaPreview';
+    box.className = 'mini-list';
+    row.insertAdjacentElement('afterend', box);
+  }
+}
+window.tpStartVoiceIaOre = tpStartVoiceIaOre;
+window.tpAnalizzaTestoConIaOre = tpAnalizzaTestoConIaOre;
+window.installVoiceIaOreButton = installVoiceIaOreButton;
+
+
 // Richiesta materiale collaboratore + sezione admin dedicata.
 // Salva su tabella Supabase richieste_materiale: niente email, notifica interna con numerino admin.
 function installMaterialeWorkerUI(){
@@ -693,6 +801,7 @@ async function initWorker(){
   fillSelect($('oreLav'), cache.lavorazioni.filter(l=>l.stato==='attivo'), r=>r.nome);
   $('oreLav').addEventListener('change',()=>{ fillSelect($('oreSotto'), cache.sotto.filter(s=>s.lavorazione_id===$('oreLav').value && s.stato==='attivo'), r=>r.nome); setTimeout(()=>enhanceSingleSelectButtons('oreSotto'), 0); });
   installVoiceOreButtons();
+  installVoiceIaOreButton();
   installMaterialeWorkerUI();
   installWorkerSectionButtons();
   enhanceWorkerChoices();
