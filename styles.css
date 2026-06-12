@@ -1025,3 +1025,40 @@ body[data-page="worker"] .choice-selected.muted{
   color:var(--muted);
   background:#fff;
 }
+
+
+/* VOCE IA collaboratore */
+body[data-page="worker"] .ia-actions{
+  margin-top:8px;
+}
+body[data-page="worker"] #btnVoceIaOre{
+  background:var(--blue) !important;
+}
+body[data-page="worker"] .ia-preview{
+  margin-top:12px;
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:#f8fbff;
+}
+body[data-page="worker"] .ia-preview h3{
+  margin:0 0 10px;
+  color:var(--blue);
+}
+body[data-page="worker"] .ia-preview table{
+  min-width:0 !important;
+  width:100%;
+  border-collapse:collapse;
+  background:#fff;
+}
+body[data-page="worker"] .ia-preview th,
+body[data-page="worker"] .ia-preview td{
+  white-space:normal;
+  font-size:13px;
+  padding:8px;
+}
+body[data-page="worker"] .ia-preview th{
+  width:150px;
+  background:var(--blue);
+  color:#fff;
+}
