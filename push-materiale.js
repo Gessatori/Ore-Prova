@@ -1,5 +1,5 @@
 // Notifiche push materiale - pagina admin
-// Mostra un pulsante per registrare il telefono e salvare la subscription in Supabase.
+// Mostra un pulsante per registrare il telefono e salva la subscription in Supabase.
 (function(){
   const VAPID_PUBLIC_KEY = 'BKN5tlq0RodUoBLk25we96hg9OeGgS3f_DGr7EbIMOo81oXR3tWBM6ViS94pln709jdxxCxOwvrRGFGx5jKMs5M';
 
@@ -88,15 +88,52 @@
       if(error) throw error;
 
       showStatus('Notifiche materiale attivate su questo telefono.', 'success');
+      await aggiornaNumeroIconaMateriale();
     }catch(e){
       showStatus(e.message || String(e), 'error');
     }
   }
 
+  async function aggiornaNumeroIconaMateriale(){
+    try{
+      const dbx = getDb();
+      if(!dbx) return;
+      const { count, error } = await dbx.from('richieste_materiale').select('id', { count:'exact', head:true }).in('stato', ['in_attesa','vista']);
+      if(error) throw error;
+      const n = Number(count || 0);
+      if(navigator.setAppBadge){
+        if(n > 0) await navigator.setAppBadge(n);
+        else if(navigator.clearAppBadge) await navigator.clearAppBadge();
+      }
+    }catch(e){}
+  }
+
+  function rendiVisteSempreVisibili(){
+    if(window.__tpVistaMaterialeVisibile) return true;
+    if(typeof window.tpRenderMaterialeAdminChiaro !== 'function') return false;
+    const original = window.tpRenderMaterialeAdminChiaro;
+    window.tpRenderMaterialeAdminChiaro = function(rows){
+      original(rows);
+      const sel = document.getElementById('matAdminStato');
+      if(sel){
+        const opt = Array.from(sel.options).find(o => o.value === 'aperti');
+        if(opt) opt.textContent = 'In attesa + viste';
+      }
+    };
+    window.__tpVistaMaterialeVisibile = true;
+    return true;
+  }
+
   window.attivaNotificheMateriale = attivaNotificheMateriale;
+  window.aggiornaNumeroIconaMateriale = aggiornaNumeroIconaMateriale;
   ready(function(){
     installButton();
-    setTimeout(installButton, 1500);
-    setTimeout(installButton, 4000);
+    aggiornaNumeroIconaMateriale();
+    const timer = setInterval(function(){
+      installButton();
+      aggiornaNumeroIconaMateriale();
+      if(rendiVisteSempreVisibili()) clearInterval(timer);
+    }, 1500);
+    setTimeout(function(){ clearInterval(timer); rendiVisteSempreVisibili(); aggiornaNumeroIconaMateriale(); }, 8000);
   });
 })();
