@@ -40,20 +40,21 @@ window.TECNOPLAFON_CONFIG = {
       #tab-materiale .materiale-date{font-size:13px;color:#64748b;font-weight:800;margin-top:4px}
       #tab-materiale .materiale-body{padding:18px}
       #tab-materiale .materiale-desc-label{font-size:12px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
-      #tab-materiale .materiale-desc{font-size:21px;line-height:1.35;font-weight:800;color:#111827;white-space:pre-wrap;background:#fff7ed;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin-bottom:14px}
+      #tab-materiale .materiale-desc{display:block;width:100%;box-sizing:border-box;font-size:21px;line-height:1.45;font-weight:800;color:#111827;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#fff7ed;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin-bottom:14px}
       #tab-materiale .materiale-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
       #tab-materiale .materiale-meta div{background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:10px 12px}
       #tab-materiale .materiale-meta span{display:block;font-size:12px;font-weight:800;color:#64748b;margin-bottom:3px}
       #tab-materiale .materiale-meta b{display:block;font-size:16px;color:#0f172a}
       #tab-materiale .materiale-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
       #tab-materiale .materiale-actions button{width:auto;margin:0}
-      #tab-materiale .materiale-print{display:none}
+      #tab-materiale .materiale-actions .danger{background:#dc2626;color:#fff;border-color:#dc2626}
       @media(max-width:760px){#tab-materiale .materiale-toolbar{grid-template-columns:1fr}#tab-materiale .materiale-summary{grid-template-columns:1fr}#tab-materiale .materiale-card-head{display:block}#tab-materiale .materiale-meta{grid-template-columns:1fr}#tab-materiale .materiale-desc{font-size:19px}}
       @media print{#tab-materiale .materiale-toolbar,#tab-materiale .materiale-actions,#tab-materiale button{display:none!important}#tab-materiale .materiale-card{box-shadow:none;break-inside:avoid;margin-bottom:10px}#tab-materiale .materiale-desc{font-size:18px;background:#fff;border:1px solid #999}}
     `;
     document.head.appendChild(style);
 
     function safe(v){ return typeof escapeHtml === 'function' ? escapeHtml(v) : String(v ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function jsSafe(v){ return String(v ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
     function statoLabel(s){ return s === 'evasa' ? 'Evasa' : s === 'annullata' ? 'Annullata' : 'In attesa'; }
     function dateText(v){
       const d = String(v || '').slice(0,16).replace('T',' ');
@@ -103,16 +104,17 @@ window.TECNOPLAFON_CONFIG = {
             <div>${typeof badgeStatoMateriale === 'function' ? badgeStatoMateriale(r.stato) : safe(statoLabel(r.stato))}</div>
           </div>
           <div class="materiale-body">
-            <div class="materiale-desc-label">Ordine materiale</div>
+            <div class="materiale-desc-label">Ordine materiale leggibile in colonna</div>
             <div class="materiale-desc">${safe(r.materiale || '-')}</div>
             <div class="materiale-meta">
               <div><span>Collaboratore</span><b>${safe(person(r))}</b></div>
               <div><span>Data richiesta</span><b>${safe(dateText(r.created_at))}</b></div>
             </div>
             <div class="materiale-actions">
-              <button type="button" onclick="setRichiestaMateriale('${safe(r.id)}','evasa')">Segna evasa</button>
-              <button type="button" class="secondary" onclick="setRichiestaMateriale('${safe(r.id)}','in_attesa')">Rimetti in attesa</button>
-              <button type="button" class="ghost" onclick="setRichiestaMateriale('${safe(r.id)}','annullata')">Annulla</button>
+              <button type="button" onclick="setRichiestaMateriale('${jsSafe(r.id)}','evasa')">Segna evasa</button>
+              <button type="button" class="secondary" onclick="setRichiestaMateriale('${jsSafe(r.id)}','in_attesa')">Rimetti in attesa</button>
+              <button type="button" class="ghost" onclick="setRichiestaMateriale('${jsSafe(r.id)}','annullata')">Annulla</button>
+              <button type="button" class="danger" onclick="eliminaRichiestaMateriale('${jsSafe(r.id)}')">Elimina richiesta</button>
             </div>
           </div>
         </article>`).join('')}</div>`;
@@ -126,10 +128,24 @@ window.TECNOPLAFON_CONFIG = {
         const rows = await q(db.from('richieste_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(200));
         window.__tpMaterialeAdminRows = rows || [];
         window.tpRenderMaterialeAdminChiaro(rows || []);
-        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), 'Vista materiale chiara aggiornata. Le richieste aperte sono mostrate in alto.');
+        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), 'Vista materiale aggiornata: righe lunghe leggibili e pulsante elimina attivo.');
         if(typeof aggiornaBadgeMaterialeAdmin === 'function') await aggiornaBadgeMaterialeAdmin();
       }catch(e){
         box.innerHTML = `<div class="error">${safe(e.message)}<br>Esegui setup_richieste_materiale_fix.sql in Supabase.</div>`;
+      }
+    };
+
+    window.eliminaRichiestaMateriale = async function(id){
+      try{
+        if(!confirm('Eliminare definitivamente questa richiesta materiale?')) return;
+        if(typeof q !== 'function' || !db) throw new Error('Database non pronto. Ricarica la pagina.');
+        await q(db.from('richieste_materiale').delete().eq('id', id));
+        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), 'Richiesta materiale eliminata.');
+        await window.caricaMaterialeAdmin();
+        if(typeof aggiornaBadgeMaterialeAdmin === 'function') await aggiornaBadgeMaterialeAdmin();
+      }catch(e){
+        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), e.message || String(e), 'error');
+        else alert(e.message || String(e));
       }
     };
   }
