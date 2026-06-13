@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tecnoplafon-ore-v9-push-materiale';
+const CACHE_NAME = 'tecnoplafon-ore-v10-push-materiale';
 const APP_SHELL = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const APP_SHELL = [
   './styles.css',
   './app.js',
   './config.js',
+  './push-materiale.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',
@@ -27,8 +28,23 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+async function fetchAdminWithPush(request){
+  const response = await fetch(request).catch(() => null);
+  const cached = response || await caches.match('./admin.html');
+  if(!cached) return caches.match('./index.html');
+  const html = await cached.text();
+  if(html.includes('push-materiale.js')) return new Response(html, {headers:{'content-type':'text/html; charset=utf-8'}});
+  const out = html.replace('</body>', '<script src="./push-materiale.js"></script></body>');
+  return new Response(out, {headers:{'content-type':'text/html; charset=utf-8'}});
+}
+
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if(url.pathname.endsWith('/admin.html') || url.pathname.endsWith('/Ore-Prova/admin.html')){
+    event.respondWith(fetchAdminWithPush(event.request));
+    return;
+  }
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request).then(res => res || caches.match('./index.html')))
   );
