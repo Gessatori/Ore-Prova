@@ -325,7 +325,7 @@ function installMaterialeWorkerUI(){
     <div id="matStorico" class="table-wrap"></div>`;
   const right = Array.from(appBox.querySelectorAll('.card')).find(x => (x.textContent || '').includes('Richiesta vacanza'));
   if(right) right.insertAdjacentElement('afterend', card); else appBox.appendChild(card);
-  fillSelectWithBlankSafe($('matCantiere'), (cache.cantieri||[]).filter(c=>c.stato==='attivo'), r=>`${r.codice||''} ${r.nome||''}`, 'Scegli cantiere...');
+  fillSelectWithBlankSafe($('matCantiere'), (cache.cantieri||[]).filter(c=>c.stato==='attivo'), r=>tpCantiereLabel(r), 'Scegli cantiere...');
   caricaMaterialeWorker();
   setTimeout(()=>enhanceSingleSelectButtons('matCantiere'), 0);
 }
@@ -464,41 +464,89 @@ function enhanceSingleSelectButtons(selectId){
     box.className = 'choice-buttons';
     sel.insertAdjacentElement('afterend', box);
   }
+
   const options = Array.from(sel.options || []);
   const realOptions = options.filter(o => String(o.value || '') !== '');
   const searchId = selectId + 'ChoiceSearch';
   const goId = selectId + 'ChoiceGo';
   const oldSearch = $(searchId);
   const searchText = oldSearch ? oldSearch.value : '';
+
   if(!realOptions.length){
     box.innerHTML = `<div class="choice-empty">${selectId==='oreSotto' ? 'Prima scegli la lavorazione.' : 'Nessuna scelta disponibile.'}</div>`;
     return;
   }
+
   const current = String(sel.value || '');
   const q = tpNormText(searchText);
-  const filteredOptions = q ? realOptions.filter(o => tpNormText(o.textContent).includes(q)) : realOptions;
+  const words = q.split(' ').filter(Boolean);
+
+  const scoreOption = (option) => {
+    const txt = tpNormText(option.textContent);
+    if(!q) return 1;
+    let score = 0;
+    if(txt === q) score += 1000;
+    if(txt.startsWith(q)) score += 700;
+    if(txt.includes(q)) score += 350;
+    words.forEach(w => {
+      if(txt.startsWith(w)) score += 140;
+      else if(txt.includes(w)) score += 70;
+    });
+    return score;
+  };
+
+  const filteredOptions = q
+    ? realOptions.map(o => ({option:o, score:scoreOption(o)})).filter(x => x.score > 0).sort((a,b)=>b.score-a.score).map(x=>x.option)
+    : realOptions;
+
   const firstValue = filteredOptions[0] ? String(filteredOptions[0].value) : '';
   const selectedOption = realOptions.find(o => String(o.value) === current);
+  const selectedText = selectedOption ? tpShortChoiceText(selectedOption.textContent) : '';
+  const selectedTextNorm = tpNormText(selectedText);
+  const sceltaGiaConfermata = !!(selectedOption && q && selectedTextNorm === q);
+
   const helperHtml = q
     ? (firstValue
-        ? `<div class="choice-selected">Trovato: <b>${escapeHtml(tpShortChoiceText(filteredOptions[0].textContent))}</b>. Premi Vai per selezionare.</div>`
+        ? (sceltaGiaConfermata
+            ? `<div class="choice-selected">Scelta inserita nella ricerca: <b>${escapeHtml(selectedText)}</b></div>`
+            : `<div class="choice-selected">Menu a tendina aperto: tocca il nome corretto.</div>`)
         : '<div class="choice-no-results">Nessun risultato trovato.</div>')
     : (selectedOption
-        ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(tpShortChoiceText(selectedOption.textContent))}</b></div>`
-        : '<div class="choice-selected muted">Scrivi il nome e premi Vai.</div>');
+        ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(selectedText)}</b></div>`
+        : '<div class="choice-selected muted">Scrivi nella riga di ricerca: sotto si apre il menu a tendina.</div>');
+
+  const suggestionHtml = q && filteredOptions.length && !sceltaGiaConfermata
+    ? `<div class="choice-suggestions choice-dropdown">${filteredOptions.slice(0, 12).map(o => `
+        <button type="button" class="choice-suggestion ${String(o.value) === current ? 'active' : ''}" data-value="${escapeHtml(o.value)}">
+          <span class="choice-suggestion-main">${escapeHtml(tpShortChoiceText(o.textContent))}</span>
+        </button>`).join('')}</div>`
+    : '';
+
   const searchHtml = `
     <div class="choice-search-row">
-      <input id="${searchId}" class="choice-search" type="search" placeholder="Ricerca veloce..." value="${escapeHtml(searchText)}" autocomplete="off">
-      <button type="button" id="${goId}" class="choice-go" ${firstValue ? '' : 'disabled'}>Vai</button>
+      <input id="${searchId}" class="choice-search" type="search" placeholder="Scrivi qui e scegli dalla tendina..." value="${escapeHtml(searchText)}" autocomplete="off">
     </div>`;
-  box.innerHTML = `${searchHtml}${helperHtml}`;
-  const chooseValue = (value) => {
+
+  box.innerHTML = `${searchHtml}${suggestionHtml}${helperHtml}`;
+
+  const chooseValue = (value, labelText) => {
     if(!value) return;
+    const chosen = realOptions.find(o => String(o.value) === String(value));
+    const chosenText = tpShortChoiceText(labelText || chosen?.textContent || '');
+    const currentSearch = $(searchId);
+    if(currentSearch && chosenText) currentSearch.value = chosenText;
     sel.value = String(value);
     sel.dispatchEvent(new Event('change', {bubbles:true}));
     enhanceSingleSelectButtons(selectId);
+    const freshSearch = $(searchId);
+    if(freshSearch && chosenText){
+      freshSearch.value = chosenText;
+      freshSearch.focus();
+      freshSearch.setSelectionRange(chosenText.length, chosenText.length);
+    }
     if(selectId === 'oreLav') setTimeout(()=>enhanceSingleSelectButtons('oreSotto'), 0);
   };
+
   const search = $(searchId);
   if(search){
     search.oninput = () => {
@@ -511,19 +559,26 @@ function enhanceSingleSelectButtons(selectId){
       if(ev.key === 'Enter'){
         ev.preventDefault();
         const freshQ = tpNormText(search.value);
-        const first = (freshQ ? realOptions.filter(o => tpNormText(o.textContent).includes(freshQ)) : realOptions)[0];
-        if(first) chooseValue(first.value);
+        const freshWords = freshQ.split(' ').filter(Boolean);
+        const scored = realOptions.map(o => {
+          const txt = tpNormText(o.textContent);
+          let score = 0;
+          if(txt === freshQ) score += 1000;
+          if(txt.startsWith(freshQ)) score += 700;
+          if(txt.includes(freshQ)) score += 350;
+          freshWords.forEach(w => score += txt.includes(w) ? 70 : 0);
+          return {o, score};
+        }).filter(x => !freshQ || x.score > 0).sort((a,b)=>b.score-a.score);
+        const first = (freshQ ? scored.map(x=>x.o) : realOptions)[0];
+        if(first) chooseValue(first.value, first.textContent);
       }
     };
   }
-  const go = $(goId);
-  if(go){
-    go.onclick = () => {
-      const freshQ = tpNormText($(searchId)?.value || '');
-      const first = (freshQ ? realOptions.filter(o => tpNormText(o.textContent).includes(freshQ)) : realOptions)[0];
-      if(first) chooseValue(first.value);
-    };
-  }
+
+  box.querySelectorAll('.choice-suggestion').forEach(btn => {
+    btn.onclick = () => chooseValue(btn.dataset.value, btn.querySelector('.choice-suggestion-main')?.textContent || '');
+  });
+
 }
 function enhanceWorkerChoices(){
   ['oreCantiere','oreLav','oreSotto','reqTipo','matCantiere','myMese'].forEach(enhanceSingleSelectButtons);
@@ -634,6 +689,17 @@ function setDateRangeForSelectedMonth(){
 
 function fillSelect(el, rows, label, value='id'){ if(el) el.innerHTML='<option value="">Scegli...</option>'+rows.map(r=>`<option value="${r[value]}">${escapeHtml(label(r))}</option>`).join(''); }
 
+function tpCantiereLabel(c){
+  const parts = [];
+  if(c?.codice) parts.push(c.codice);
+  if(c?.nome) parts.push(c.nome);
+  if(c?.cliente) parts.push('Cliente: ' + c.cliente);
+  if(c?.localita) parts.push(c.localita);
+  const km = Number(c?.km || 0);
+  if(km) parts.push(fmt(km) + ' km');
+  return parts.join(' · ');
+}
+
 
 // V16 - filtri safe: non toccano dashboard e non duplicano ID.
 function normSearchSafe(v){
@@ -658,7 +724,7 @@ function aggiornaFiltriAdminSafe(){
   // V17: filtri semplificati. Nessun filtro testo sui select, per evitare blocchi.
   fillSelect($('adminCollabMese'), cache.collab || [], r=>`${r.cognome} ${r.nome} (${r.stato})`);
   fillSelect($('admOreCollab'), (cache.collab || []).filter(c=>c.stato==='attivo'), r=>`${r.cognome} ${r.nome}`);
-  fillSelect($('admOreCantiere'), (cache.cantieri || []).filter(c=>c.stato==='attivo'), r=>`${r.codice} ${r.nome} - ${fmt(r.km)} km`);
+  fillSelect($('admOreCantiere'), (cache.cantieri || []).filter(c=>c.stato==='attivo'), r=>tpCantiereLabel(r));
   fillSelect($('admOreLav'), (cache.lavorazioni || []).filter(l=>l.stato==='attivo'), r=>r.nome);
   fillSelect($('admOreSotto'), cache.sotto || [], r=>r.nome);
 }
@@ -797,7 +863,7 @@ async function initWorker(){
   $('workerName').textContent = `${session.user.cognome} ${session.user.nome}`;
   $('todayLabel').textContent = new Date().toLocaleDateString('it-CH');
   $('reqDa').value=todayISO(); $('reqA').value=todayISO(); $('myAnno').value=new Date().getFullYear();
-  fillSelect($('oreCantiere'), cache.cantieri.filter(c=>c.stato==='attivo'), r=>`${r.codice} ${r.nome} - ${fmt(r.km)} km`);
+  fillSelect($('oreCantiere'), cache.cantieri.filter(c=>c.stato==='attivo'), r=>tpCantiereLabel(r));
   fillSelect($('oreLav'), cache.lavorazioni.filter(l=>l.stato==='attivo'), r=>r.nome);
   $('oreLav').addEventListener('change',()=>{ fillSelect($('oreSotto'), cache.sotto.filter(s=>s.lavorazione_id===$('oreLav').value && s.stato==='attivo'), r=>r.nome); setTimeout(()=>enhanceSingleSelectButtons('oreSotto'), 0); });
   installVoiceOreButtons();
@@ -869,7 +935,7 @@ async function initAdmin(){
   fillSelect($('adminCollabMese'), cache.collab, r=>`${r.cognome} ${r.nome} (${r.stato})`);
   fillSelect($('vacCollabSelect'), cache.collab, r=>`${r.cognome} ${r.nome} (${r.stato})`);
   fillSelect($('admOreCollab'), cache.collab.filter(c=>c.stato==='attivo'), r=>`${r.cognome} ${r.nome}`);
-  fillSelect($('admOreCantiere'), cache.cantieri.filter(c=>c.stato==='attivo'), r=>`${r.codice} ${r.nome} - ${fmt(r.km)} km`);
+  fillSelect($('admOreCantiere'), cache.cantieri.filter(c=>c.stato==='attivo'), r=>tpCantiereLabel(r));
   fillSelect($('admOreLav'), cache.lavorazioni.filter(l=>l.stato==='attivo'), r=>r.nome);
   fillSelect($('newSottoLav'), cache.lavorazioni.filter(l=>l.stato==='attivo'), r=>r.nome);
   $('admOreLav').addEventListener('change', aggiornaSottoLavorazioniAdminInserimento);
