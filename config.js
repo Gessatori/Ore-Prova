@@ -26,13 +26,14 @@ window.TECNOPLAFON_CONFIG = {
       #tab-materiale .materiale-toolbar{display:grid;grid-template-columns:1.4fr .8fr auto;gap:12px;align-items:end;margin:16px 0;padding:14px;border:1px solid #dbe3ef;border-radius:18px;background:#f8fafc}
       #tab-materiale .materiale-toolbar label{margin:0 0 6px 0;font-weight:800;color:#334155}
       #tab-materiale .materiale-toolbar input,#tab-materiale .materiale-toolbar select{margin:0;background:#fff}
-      #tab-materiale .materiale-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 14px}
+      #tab-materiale .materiale-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 14px}
       #tab-materiale .materiale-kpi{border-radius:18px;padding:12px 14px;background:#f8fafc;border:1px solid #dbe3ef}
       #tab-materiale .materiale-kpi span{display:block;font-size:12px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
       #tab-materiale .materiale-kpi b{display:block;font-size:26px;color:#0f172a;line-height:1.1;margin-top:4px}
       #tab-materiale .materiale-list{display:grid;gap:14px;margin-top:12px}
       #tab-materiale .materiale-card{border:1px solid #dbe3ef;border-radius:22px;background:#fff;box-shadow:0 10px 26px rgba(15,23,42,.08);overflow:hidden}
       #tab-materiale .materiale-card.waiting{border-left:8px solid #f59e0b}
+      #tab-materiale .materiale-card.seen{border-left:8px solid #3b82f6;opacity:.95}
       #tab-materiale .materiale-card.done{border-left:8px solid #16a34a;opacity:.9}
       #tab-materiale .materiale-card.cancel{border-left:8px solid #ef4444;opacity:.82}
       #tab-materiale .materiale-card-head{display:flex;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #e5e7eb;background:#f8fafc}
@@ -48,19 +49,28 @@ window.TECNOPLAFON_CONFIG = {
       #tab-materiale .materiale-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
       #tab-materiale .materiale-actions button{width:auto;margin:0}
       #tab-materiale .materiale-actions .danger{background:#dc2626;color:#fff;border-color:#dc2626}
+      .tp-materiale-popup{position:fixed;right:18px;bottom:18px;z-index:999999;width:min(420px,calc(100vw - 36px));background:#fff;border:2px solid #f59e0b;border-radius:22px;box-shadow:0 24px 80px rgba(15,23,42,.24);padding:18px;display:none}
+      .tp-materiale-popup.open{display:block;animation:tpPop .18s ease-out}
+      .tp-materiale-popup h3{margin:0 0 8px;color:#0f172a;font-size:22px}.tp-materiale-popup p{margin:0 0 12px;color:#334155;font-weight:700;line-height:1.35}.tp-materiale-popup .tp-actions{display:flex;flex-wrap:wrap;gap:8px}.tp-materiale-popup button{width:auto;margin:0}.tp-materiale-popup .tp-close{background:#64748b}.tp-materiale-popup .tp-open{background:#078b35}.tp-materiale-popup .tp-seen{background:#0b63b6}
+      @keyframes tpPop{from{transform:translateY(12px);opacity:.2}to{transform:translateY(0);opacity:1}}
       @media(max-width:760px){#tab-materiale .materiale-toolbar{grid-template-columns:1fr}#tab-materiale .materiale-summary{grid-template-columns:1fr}#tab-materiale .materiale-card-head{display:block}#tab-materiale .materiale-meta{grid-template-columns:1fr}#tab-materiale .materiale-desc{font-size:19px}}
-      @media print{#tab-materiale .materiale-toolbar,#tab-materiale .materiale-actions,#tab-materiale button{display:none!important}#tab-materiale .materiale-card{box-shadow:none;break-inside:avoid;margin-bottom:10px}#tab-materiale .materiale-desc{font-size:18px;background:#fff;border:1px solid #999}}
+      @media print{#tab-materiale .materiale-toolbar,#tab-materiale .materiale-actions,#tab-materiale button,.tp-materiale-popup{display:none!important}#tab-materiale .materiale-card{box-shadow:none;break-inside:avoid;margin-bottom:10px}#tab-materiale .materiale-desc{font-size:18px;background:#fff;border:1px solid #999}}
     `;
     document.head.appendChild(style);
 
     function safe(v){ return typeof escapeHtml === 'function' ? escapeHtml(v) : String(v ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function jsSafe(v){ return String(v ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-    function statoLabel(s){ return s === 'evasa' ? 'Evasa' : s === 'annullata' ? 'Annullata' : 'In attesa'; }
+    function statoLabel(s){ return s === 'evasa' ? 'Evasa' : s === 'annullata' ? 'Annullata' : s === 'vista' ? 'Visto' : 'In attesa'; }
+    function statoBadge(s){
+      if(typeof badgeStatoMateriale === 'function') return badgeStatoMateriale(s === 'vista' ? 'vista' : s);
+      const cls = s === 'evasa' ? 'green' : s === 'annullata' ? 'red' : 'yellow';
+      return `<span class="badge ${cls}">${safe(statoLabel(s))}</span>`;
+    }
     function dateText(v){
       const d = String(v || '').slice(0,16).replace('T',' ');
       return d || '-';
     }
-    function rowClass(r){ return r.stato === 'evasa' ? 'done' : r.stato === 'annullata' ? 'cancel' : 'waiting'; }
+    function rowClass(r){ return r.stato === 'evasa' ? 'done' : r.stato === 'annullata' ? 'cancel' : r.stato === 'vista' ? 'seen' : 'waiting'; }
     function person(r){ return `${r.collaboratori?.cognome || ''} ${r.collaboratori?.nome || ''}`.trim() || '-'; }
     function site(r){ return `${r.cantieri?.codice || ''} ${r.cantieri?.nome || ''}`.trim() || '-'; }
 
@@ -78,6 +88,7 @@ window.TECNOPLAFON_CONFIG = {
         return matchTxt && matchStato;
       });
       const nAttesa = all.filter(r=>(r.stato || 'in_attesa') === 'in_attesa').length;
+      const nViste = all.filter(r=>r.stato === 'vista').length;
       const nEvase = all.filter(r=>r.stato === 'evasa').length;
       const nAnnullate = all.filter(r=>r.stato === 'annullata').length;
       const toolbar = `
@@ -86,13 +97,15 @@ window.TECNOPLAFON_CONFIG = {
           <div><label>Mostra</label><select id="matAdminStato" onchange="tpRenderMaterialeAdminChiaro()">
             <option value="aperti" ${stato==='aperti'?'selected':''}>Solo in attesa</option>
             <option value="tutte" ${stato==='tutte'?'selected':''}>Tutte</option>
+            <option value="vista" ${stato==='vista'?'selected':''}>Viste</option>
             <option value="evasa" ${stato==='evasa'?'selected':''}>Evase</option>
             <option value="annullata" ${stato==='annullata'?'selected':''}>Annullate</option>
           </select></div>
           <button type="button" class="secondary" onclick="caricaMaterialeAdmin()">Aggiorna</button>
         </div>
         <div class="materiale-summary">
-          <div class="materiale-kpi"><span>Da preparare</span><b>${nAttesa}</b></div>
+          <div class="materiale-kpi"><span>Da vedere</span><b>${nAttesa}</b></div>
+          <div class="materiale-kpi"><span>Viste</span><b>${nViste}</b></div>
           <div class="materiale-kpi"><span>Evase</span><b>${nEvase}</b></div>
           <div class="materiale-kpi"><span>Annullate</span><b>${nAnnullate}</b></div>
         </div>`;
@@ -101,7 +114,7 @@ window.TECNOPLAFON_CONFIG = {
         <article class="materiale-card ${rowClass(r)}">
           <div class="materiale-card-head">
             <div><h3 class="materiale-title">${safe(site(r))}</h3><div class="materiale-date">${safe(dateText(r.created_at))} - ${safe(person(r))}</div></div>
-            <div>${typeof badgeStatoMateriale === 'function' ? badgeStatoMateriale(r.stato) : safe(statoLabel(r.stato))}</div>
+            <div>${statoBadge(r.stato)}</div>
           </div>
           <div class="materiale-body">
             <div class="materiale-desc-label">Ordine materiale leggibile in colonna</div>
@@ -111,6 +124,7 @@ window.TECNOPLAFON_CONFIG = {
               <div><span>Data richiesta</span><b>${safe(dateText(r.created_at))}</b></div>
             </div>
             <div class="materiale-actions">
+              <button type="button" onclick="setRichiestaMateriale('${jsSafe(r.id)}','vista')">Visto</button>
               <button type="button" onclick="setRichiestaMateriale('${jsSafe(r.id)}','evasa')">Segna evasa</button>
               <button type="button" class="secondary" onclick="setRichiestaMateriale('${jsSafe(r.id)}','in_attesa')">Rimetti in attesa</button>
               <button type="button" class="ghost" onclick="setRichiestaMateriale('${jsSafe(r.id)}','annullata')">Annulla</button>
@@ -128,7 +142,7 @@ window.TECNOPLAFON_CONFIG = {
         const rows = await q(db.from('richieste_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(200));
         window.__tpMaterialeAdminRows = rows || [];
         window.tpRenderMaterialeAdminChiaro(rows || []);
-        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), 'Vista materiale aggiornata: righe lunghe leggibili e pulsante elimina attivo.');
+        if(typeof msg === 'function') msg(document.getElementById('adminMaterialeMsg'), 'Vista materiale aggiornata. Il pulsante Visto ferma il popup.');
         if(typeof aggiornaBadgeMaterialeAdmin === 'function') await aggiornaBadgeMaterialeAdmin();
       }catch(e){
         box.innerHTML = `<div class="error">${safe(e.message)}<br>Esegui setup_richieste_materiale_fix.sql in Supabase.</div>`;
@@ -157,4 +171,89 @@ window.TECNOPLAFON_CONFIG = {
     }, 250);
     setTimeout(function(){ clearInterval(timer); installMaterialeAdminChiaro(); }, 4000);
   });
+})();
+
+// Popup Admin per nuove richieste materiale.
+// Funziona quando admin.html e aperto: controlla ogni minuto e suona finche ci sono richieste in_attesa.
+(function(){
+  function ready(fn){
+    if(document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(fn, 0);
+    else document.addEventListener('DOMContentLoaded', fn);
+  }
+  function waitForAdmin(){
+    if(!document.body || document.body.dataset.page !== 'admin') return;
+    const timer = setInterval(function(){
+      if(window.db || typeof db !== 'undefined'){
+        clearInterval(timer);
+        installPopupMaterialeAdmin();
+      }
+    }, 500);
+    setTimeout(function(){ clearInterval(timer); installPopupMaterialeAdmin(); }, 6000);
+  }
+  function beep(){
+    try{
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.value = 0.08;
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(function(){ osc.stop(); ctx.close(); }, 320);
+    }catch(e){}
+  }
+  function popup(){
+    let el = document.getElementById('tpMaterialePopup');
+    if(el) return el;
+    el = document.createElement('div');
+    el.id = 'tpMaterialePopup';
+    el.className = 'tp-materiale-popup';
+    el.innerHTML = '<h3>Materiale da vedere</h3><p id="tpMaterialePopupText">Nuova richiesta materiale in attesa.</p><div class="tp-actions"><button class="tp-open" type="button" id="tpOpenMateriale">Apri richieste</button><button class="tp-seen" type="button" id="tpVistoMateriale">Visto ultimo avviso</button><button class="tp-close" type="button" id="tpCloseMateriale">Chiudi</button></div>';
+    document.body.appendChild(el);
+    document.getElementById('tpOpenMateriale').onclick = function(){
+      if(typeof showAdminTab === 'function') showAdminTab('materiale');
+      el.classList.remove('open');
+      window.scrollTo({top:0, behavior:'smooth'});
+    };
+    document.getElementById('tpCloseMateriale').onclick = function(){ el.classList.remove('open'); };
+    document.getElementById('tpVistoMateriale').onclick = function(){
+      localStorage.setItem('tp_materiale_popup_seen_key', window.__tpMaterialePopupKey || '');
+      el.classList.remove('open');
+    };
+    return el;
+  }
+  async function checkMaterialePopup(){
+    try{
+      if(typeof q !== 'function' || typeof db === 'undefined' || !db) return;
+      const rows = await q(db.from('richieste_materiale').select('id,created_at,materiale,collaboratori(nome,cognome),cantieri(codice,nome)').eq('stato','in_attesa').order('created_at',{ascending:false}).limit(10));
+      const badge = document.getElementById('materialeBadge');
+      if(badge){
+        badge.textContent = String(rows.length || 0);
+        badge.style.display = rows.length ? 'inline-flex' : 'none';
+      }
+      if(!rows || !rows.length) return;
+      const key = rows.map(r=>`${r.id}:${r.created_at}`).join('|');
+      window.__tpMaterialePopupKey = key;
+      const seen = localStorage.getItem('tp_materiale_popup_seen_key') || '';
+      if(seen === key) return;
+      const first = rows[0];
+      const collab = `${first.collaboratori?.cognome || ''} ${first.collaboratori?.nome || ''}`.trim() || 'Collaboratore';
+      const cantiere = `${first.cantieri?.codice || ''} ${first.cantieri?.nome || ''}`.trim() || 'Cantiere non indicato';
+      const p = popup();
+      document.getElementById('tpMaterialePopupText').innerHTML = rows.length === 1 ? `1 richiesta materiale in attesa.<br><b>${cantiere}</b><br>${collab}` : `${rows.length} richieste materiale in attesa.<br>Ultima: <b>${cantiere}</b><br>${collab}`;
+      p.classList.add('open');
+      beep();
+    }catch(e){}
+  }
+  function installPopupMaterialeAdmin(){
+    if(window.__tpMaterialePopupInstalled) return;
+    window.__tpMaterialePopupInstalled = true;
+    popup();
+    setTimeout(checkMaterialePopup, 4000);
+    setInterval(checkMaterialePopup, 60000);
+  }
+  ready(waitForAdmin);
 })();
