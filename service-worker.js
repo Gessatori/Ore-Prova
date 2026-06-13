@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tecnoplafon-ore-v10-push-materiale';
+const CACHE_NAME = 'tecnoplafon-ore-v12-badge-materiale';
 const APP_SHELL = [
   './',
   './index.html',
@@ -60,7 +60,12 @@ self.addEventListener('push', event => {
     badge: './icons/icon-180.png',
     data: { url: data.url || './admin.html' }
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  const m = String(title).match(/^(\d+)/);
+  const n = Number(data.badge || data.count || (m ? m[1] : 1));
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(title, options),
+    self.registration.setAppBadge && n > 0 ? self.registration.setAppBadge(n).catch(()=>{}) : Promise.resolve()
+  ]));
 });
 
 self.addEventListener('notificationclick', event => {
