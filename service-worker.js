@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tecnoplafon-ore-v6-ricerca-tendina';
+const CACHE_NAME = 'tecnoplafon-ore-v9-push-materiale';
 const APP_SHELL = [
   './',
   './index.html',
@@ -32,4 +32,23 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request).then(res => res || caches.match('./index.html')))
   );
+});
+
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || 'Tecnoplafon - materiale';
+  const options = {
+    body: data.body || 'Nuova richiesta materiale in attesa.',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-180.png',
+    data: { url: data.url || './admin.html' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = event.notification.data && event.notification.data.url ? event.notification.data.url : './admin.html';
+  event.waitUntil(clients.openWindow(url));
 });
