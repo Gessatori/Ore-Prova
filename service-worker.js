@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tecnoplafon-ore-v3-voce-ia';
+const CACHE_NAME = 'tecnoplafon-ore-v6-ricerca-tendina';
 const APP_SHELL = [
   './',
   './index.html',
