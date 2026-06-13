@@ -1,0 +1,51 @@
+PROMEMORIA AUTOMATICO RICHIESTE MATERIALE
+
+Obiettivo
+- Quando una richiesta materiale resta in stato in_attesa, Supabase deve inviare un promemoria periodico all'admin.
+- Il promemoria si ferma quando in Admin la richiesta viene segnata Evasa oppure Annullata.
+
+Nota importante
+- GitHub Pages funziona solo quando il sito e aperto nel browser.
+- Per ricevere avvisi anche quando il sito e chiuso serve una funzione programmata in Supabase.
+- Frequenza consigliata: ogni 5 minuti, non ogni minuto, per evitare troppe email.
+
+PASSO 1 - Creare una Edge Function in Supabase
+Nome funzione:
+promemoria-materiale
+
+La funzione deve:
+1. leggere la tabella richieste_materiale;
+2. cercare le righe con stato = in_attesa;
+3. mandare email a info@tecnoplafon.ch;
+4. non mandare nulla se non ci sono richieste aperte.
+
+PASSO 2 - Impostare i Secrets Supabase
+Nel progetto Supabase aprire:
+Project Settings > Edge Functions > Secrets
+
+Aggiungere:
+RESEND_API_KEY = chiave del servizio email
+MATERIAL_REMINDER_TO = info@tecnoplafon.ch
+MATERIAL_REMINDER_FROM = indirizzo mittente verificato
+
+PASSO 3 - Programmare il controllo automatico
+In Supabase creare uno Scheduled Function / Cron ogni 5 minuti.
+
+Frequenza cron consigliata:
+*/5 * * * *
+
+PASSO 4 - Come si ferma il promemoria
+Il promemoria continua solo per le righe con stato in_attesa.
+Quando l'admin preme:
+- Segna evasa
+oppure
+- Annulla
+la richiesta non viene piu inclusa nei promemoria.
+
+PASSO 5 - Test
+1. Da collaboratore inviare una richiesta materiale.
+2. Attendere il primo giro del cron.
+3. Verificare email admin.
+4. Aprire Admin > Richieste materiale.
+5. Segnare Evasa.
+6. Verificare che il promemoria successivo non venga piu inviato per quella richiesta.
