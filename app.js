@@ -582,32 +582,62 @@ async function salvaBollettinoMaterialeAdmin(){
   }
 }
 function renderBollettiniMaterialeAdmin(rows){
-  const cantieri = Array.from(new Map(rows.map(r=>[String(r.cantiere_id || ''), r.cantiere_nome || '-']).filter(x=>x[0])).entries());
-  const filter = `<div class="tp-bollettini-filter"><label>Filtra bollettini per cantiere</label><select id="bollettiniFiltroCantiere" onchange="tpFiltroBollettiniCantiere()"><option value="">Tutti i cantieri</option>${cantieri.map(([id,txt])=>`<option value="${escapeHtml(id)}">${escapeHtml(txt)}</option>`).join('')}</select></div>`;
-  if(!rows.length) return `<section class="tp-bollettini-admin"><h3>Bollettini materiale</h3>${filter}<p class="muted">Nessun bollettino materiale caricato.</p></section>`;
-  return `<section class="tp-bollettini-admin"><h3>Bollettini materiale da visionare</h3><p class="muted">Qui vedi i bollettini fotografati dai collaboratori. A fine mese puoi aprirli/scaricarli e poi eliminarli per liberare spazio.</p>${filter}<div class="materiale-mobile-list tp-bollettini-list">${rows.map(r=>{
-    const collaboratore = r.collaboratore_nome || '-';
-    const cantiere = r.cantiere_nome || '-';
-    const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
-    const stato = r.stato || 'da_visionare';
-    return `<article class="materiale-card tp-bollettino-card" data-cantiere-id="${escapeHtml(r.cantiere_id || '')}">
-      <div class="materiale-card-head"><div><div class="materiale-card-title">${escapeHtml(collaboratore)}</div><div class="materiale-card-date">${escapeHtml(data)}</div></div><div>${badgeStatoMateriale(stato)}</div></div>
-      <div class="materiale-card-row"><span>Cantiere</span><b>${escapeHtml(cantiere)}</b></div>
-      <div class="materiale-card-row materiale-card-text"><span>Nota</span><b>${escapeHtml(r.note || '-')}</b></div>
-      <div class="materiale-card-actions">
-        <button type="button" onclick="tpScaricaBollettino('${r.id}','${escapeHtml(r.percorso_file || '')}')">Apri / scarica foto</button>
-        ${stato !== 'visionato' ? `<button type="button" class="secondary" onclick="segnaBollettinoVisionato('${r.id}')">Segna visionato</button>` : ''}
-        <button type="button" class="ghost" onclick="eliminaBollettinoMateriale('${r.id}','${escapeHtml(r.percorso_file || '')}')">Elimina</button>
+  const sorted = [...(rows || [])].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  const cantieri = Array.from(new Map(sorted.map(r=>[String(r.cantiere_id || ''), r.cantiere_nome || '-']).filter(x=>x[0])).entries())
+    .sort((a,b)=>String(a[1]||'').localeCompare(String(b[1]||''), 'it'));
+  const filter = `<div class="tp-bollettini-filter">
+    <label>Cerca bollettini per cantiere</label>
+    <select id="bollettiniFiltroCantiere" onchange="tpFiltroBollettiniCantiere()">
+      <option value="">Tutti i cantieri</option>
+      ${cantieri.map(([id,txt])=>`<option value="${escapeHtml(id)}">${escapeHtml(txt)}</option>`).join('')}
+    </select>
+  </div>`;
+  if(!sorted.length) return `<section class="tp-bollettini-admin"><h3>Bollettini materiale</h3>${filter}<p class="muted">Nessun bollettino materiale caricato.</p></section>`;
+
+  const gruppi = new Map();
+  sorted.forEach(r=>{
+    const key = String(r.cantiere_id || 'senza-cantiere');
+    if(!gruppi.has(key)) gruppi.set(key, { id:key, nome:r.cantiere_nome || 'Senza cantiere', righe:[] });
+    gruppi.get(key).righe.push(r);
+  });
+
+  const gruppiHtml = Array.from(gruppi.values()).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''), 'it')).map(gruppo=>{
+    const aperti = gruppo.righe.filter(r => (r.stato || 'da_visionare') !== 'visionato').length;
+    return `<div class="tp-bollettino-gruppo" data-cantiere-id="${escapeHtml(gruppo.id)}">
+      <div class="tp-bollettino-gruppo-head">
+        <div>
+          <div class="tp-bollettino-gruppo-title">${escapeHtml(gruppo.nome)}</div>
+          <div class="muted">${gruppo.righe.length} bollettino/i${aperti ? ` · ${aperti} da visionare` : ''}</div>
+        </div>
       </div>
-    </article>`;
-  }).join('')}</div></section>`;
+      <div class="materiale-mobile-list tp-bollettini-list">
+        ${gruppo.righe.map(r=>{
+          const collaboratore = r.collaboratore_nome || '-';
+          const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
+          const stato = r.stato || 'da_visionare';
+          return `<article class="materiale-card tp-bollettino-card" data-cantiere-id="${escapeHtml(r.cantiere_id || '')}">
+            <div class="materiale-card-head"><div><div class="materiale-card-title">${escapeHtml(collaboratore)}</div><div class="materiale-card-date">${escapeHtml(data)}</div></div><div>${badgeStatoMateriale(stato)}</div></div>
+            <div class="materiale-card-row materiale-card-text"><span>Nota</span><b>${escapeHtml(r.note || '-')}</b></div>
+            <div class="materiale-card-actions">
+              <button type="button" onclick="tpScaricaBollettino('${r.id}','${escapeHtml(r.percorso_file || '')}')">Apri / scarica foto</button>
+              ${stato !== 'visionato' ? `<button type="button" class="secondary" onclick="segnaBollettinoVisionato('${r.id}')">Segna visionato</button>` : ''}
+              <button type="button" class="ghost" onclick="eliminaBollettinoMateriale('${r.id}','${escapeHtml(r.percorso_file || '')}')">Elimina</button>
+            </div>
+          </article>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<section class="tp-bollettini-admin"><h3>Bollettini materiale per cantiere</h3><p class="muted">Qui vedi tutti i bollettini fotografati, raggruppati per cantiere. A fine mese selezioni il cantiere, apri/scarichi le foto e poi le elimini per liberare spazio.</p>${filter}${gruppiHtml}</section>`;
 }
 function tpFiltroBollettiniCantiere(){
   const val = $('bollettiniFiltroCantiere')?.value || '';
-  document.querySelectorAll('.tp-bollettino-card').forEach(card=>{
-    card.style.display = (!val || card.dataset.cantiereId === val) ? '' : 'none';
+  document.querySelectorAll('.tp-bollettino-gruppo').forEach(gruppo=>{
+    gruppo.style.display = (!val || gruppo.dataset.cantiereId === val) ? '' : 'none';
   });
 }
+
 
 async function caricaMaterialeAdmin(){
   const box = $('adminMaterialeBox');
@@ -740,6 +770,12 @@ function installMaterialeMobileCardsStyle(){
     .tp-admin-bollettino-upload h3{margin-top:0;}
     .tp-admin-bollettino-upload label{display:block;margin-top:10px;}
     .tp-admin-bollettino-upload select,.tp-admin-bollettino-upload input,.tp-admin-bollettino-upload textarea{width:100%;}
+    .tp-bollettini-filter{margin:10px 0 14px 0;}
+    .tp-bollettini-filter label{display:block;font-weight:900;margin-bottom:6px;color:#082b63;}
+    .tp-bollettini-filter select{width:100%;}
+    .tp-bollettino-gruppo{border:1px solid #d6e2f0;border-radius:18px;background:#f8fbff;padding:12px;margin:12px 0;}
+    .tp-bollettino-gruppo-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;}
+    .tp-bollettino-gruppo-title{font-size:20px;font-weight:900;color:#082b63;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
