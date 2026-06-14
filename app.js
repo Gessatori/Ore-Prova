@@ -515,6 +515,72 @@ async function segnaBollettinoVisionato(id){
     await caricaMaterialeAdmin();
   }catch(e){ msg($('adminMaterialeMsg'), e.message || e, 'error'); }
 }
+
+function renderAdminBollettinoUploadForm(){
+  const cantieriAttivi = (cache.cantieri || []).filter(c => c.stato === 'attivo');
+  const options = cantieriAttivi.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(tpCantiereLabel(c))}</option>`).join('');
+  return `<section class="tp-admin-bollettino-upload materiale-card">
+    <h3>Inserisci bollettino admin</h3>
+    <p class="muted">Usa questa parte quando vuoi salvare una foto bollettino senza creare un ordine materiale.</p>
+    <label>Cantiere</label>
+    <select id="adminBollettinoCantiere">
+      <option value="">Scegli cantiere...</option>
+      ${options}
+    </select>
+    <label>Foto bollettino</label>
+    <input id="adminBollettinoFoto" type="file" accept="image/*" capture="environment">
+    <label>Nota opzionale</label>
+    <textarea id="adminBollettinoNota" rows="2" placeholder="Esempio: bollettino fornitore, consegna pannelli..."></textarea>
+    <div class="row">
+      <button type="button" onclick="salvaBollettinoMaterialeAdmin()">Invia bollettino admin</button>
+    </div>
+  </section>`;
+}
+async function salvaBollettinoMaterialeAdmin(){
+  try{
+    if(!requireDb()) return;
+    const cantiereId = String($('adminBollettinoCantiere')?.value || '').trim() || null;
+    const file = $('adminBollettinoFoto')?.files?.[0] || null;
+    const nota = ($('adminBollettinoNota')?.value || '').trim();
+    if(!cantiereId){ msg($('adminMaterialeMsg'), 'Scegli il cantiere prima di inviare il bollettino admin.', 'error'); return; }
+    if(!file){ msg($('adminMaterialeMsg'), 'Fai o scegli una foto del bollettino.', 'error'); return; }
+    if(file.size > 8 * 1024 * 1024){ msg($('adminMaterialeMsg'), 'Foto troppo grande. Massimo 8 MB.', 'error'); return; }
+
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const path = `${cantiereId}/admin/${safeName}`;
+
+    msg($('adminMaterialeMsg'), 'Carico il bollettino admin...');
+    const up = await db.storage.from('bollettini-materiale').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || 'image/jpeg'
+    });
+    if(up.error) throw up.error;
+
+    const cantiereTxt = ($('adminBollettinoCantiere')?.selectedOptions?.[0]?.textContent || '-').trim();
+    const adminTxt = session?.user?.nome ? `Admin - ${session.user.nome}` : 'Admin';
+    const row = {
+      collaboratore_id: 'admin',
+      collaboratore_nome: adminTxt,
+      cantiere_id: String(cantiereId),
+      cantiere_nome: cantiereTxt,
+      nome_file: file.name || safeName,
+      percorso_file: path,
+      note: nota,
+      stato: 'da_visionare',
+      created_at: new Date().toISOString()
+    };
+    await q(db.from('bollettini_materiale').insert(row));
+
+    if($('adminBollettinoFoto')) $('adminBollettinoFoto').value = '';
+    if($('adminBollettinoNota')) $('adminBollettinoNota').value = '';
+    msg($('adminMaterialeMsg'), 'Bollettino admin salvato correttamente.', 'success');
+    await caricaMaterialeAdmin();
+  }catch(e){
+    msg($('adminMaterialeMsg'), (e.message || e) + ' - Se manca la tabella o lo Storage, esegui SQL_BOLLETTINI_MATERIALE_SUPABASE.sql in Supabase.', 'error');
+  }
+}
 function renderBollettiniMaterialeAdmin(rows){
   const cantieri = Array.from(new Map(rows.map(r=>[String(r.cantiere_id || ''), r.cantiere_nome || '-']).filter(x=>x[0])).entries());
   const filter = `<div class="tp-bollettini-filter"><label>Filtra bollettini per cantiere</label><select id="bollettiniFiltroCantiere" onchange="tpFiltroBollettiniCantiere()"><option value="">Tutti i cantieri</option>${cantieri.map(([id,txt])=>`<option value="${escapeHtml(id)}">${escapeHtml(txt)}</option>`).join('')}</select></div>`;
@@ -552,7 +618,7 @@ async function caricaMaterialeAdmin(){
     try{
       bollettini = await q(db.from('bollettini_materiale').select('*').order('created_at',{ascending:false}).limit(300));
     }catch(_e){ bollettini = []; }
-    const bollettiniHtml = renderBollettiniMaterialeAdmin(bollettini);
+    const bollettiniHtml = renderAdminBollettinoUploadForm() + renderBollettiniMaterialeAdmin(bollettini);
     const evase = rows.filter(r => r.stato === 'evasa');
     const aperte = rows.filter(r => r.stato === 'in_attesa');
     const toolbar = `<div class="materiale-mobile-toolbar">
@@ -643,6 +709,7 @@ window.salvaBollettinoMaterialeWorker = salvaBollettinoMaterialeWorker;
 window.tpScaricaBollettino = tpScaricaBollettino;
 window.eliminaBollettinoMateriale = eliminaBollettinoMateriale;
 window.segnaBollettinoVisionato = segnaBollettinoVisionato;
+window.salvaBollettinoMaterialeAdmin = salvaBollettinoMaterialeAdmin;
 window.tpFiltroBollettiniCantiere = tpFiltroBollettiniCantiere;
 window.caricaMaterialeAdmin = caricaMaterialeAdmin;
 window.setRichiestaMateriale = setRichiestaMateriale;
@@ -669,6 +736,10 @@ function installMaterialeMobileCardsStyle(){
     .materiale-card-row b{font-size:16px;color:#082b63;line-height:1.25;white-space:normal;overflow-wrap:anywhere;}
     .materiale-card-text b{font-size:18px;}
     .materiale-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #eef3f9;}
+    .tp-admin-bollettino-upload{margin:0 0 14px 0;}
+    .tp-admin-bollettino-upload h3{margin-top:0;}
+    .tp-admin-bollettino-upload label{display:block;margin-top:10px;}
+    .tp-admin-bollettino-upload select,.tp-admin-bollettino-upload input,.tp-admin-bollettino-upload textarea{width:100%;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
