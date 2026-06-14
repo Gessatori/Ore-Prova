@@ -865,7 +865,7 @@ function installMaterialeMobileCardsStyle(){
     #materialeBox,
     #materialeBox *{box-sizing:border-box;}
     #materialeBox{max-width:100%;overflow-x:hidden;overflow-y:visible;}
-    #materialeBox .worker-back-menu{position:sticky;top:10px;z-index:40;display:inline-flex!important;align-items:center;justify-content:center;width:auto!important;max-width:calc(100vw - 36px)!important;min-height:44px!important;border-radius:999px!important;padding:10px 16px!important;font-size:15px!important;font-weight:900!important;line-height:1.15!important;margin:0 0 16px 0!important;box-shadow:0 6px 16px rgba(8,43,99,.10);}
+    #materialeBox .worker-back-menu{position:fixed!important;top:calc(env(safe-area-inset-top, 0px) + 10px)!important;left:14px!important;z-index:9999;display:inline-flex!important;align-items:center;justify-content:center;width:auto!important;max-width:calc(100vw - 28px)!important;min-height:44px!important;border-radius:999px!important;padding:10px 16px!important;font-size:15px!important;font-weight:900!important;line-height:1.15!important;margin:0!important;box-shadow:0 6px 16px rgba(8,43,99,.18);}
     #materialeBox h2{margin-top:4px;}
     #materialeBox label{display:block;margin-top:14px;margin-bottom:6px;font-weight:900;color:#082b63;}
     #materialeBox .row,
