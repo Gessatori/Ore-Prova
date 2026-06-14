@@ -321,6 +321,17 @@ function installMaterialeWorkerUI(){
       <button type="button" class="secondary" onclick="tpStartVoiceMateriale()">Richiesta materiale con voce</button>
       <button type="button" onclick="salvaRichiestaMaterialeWorker()">Invia richiesta materiale</button>
     </div>
+    <div class="tp-bollettino-box">
+      <h3>Bollettino materiale</h3>
+      <p class="muted">Usa lo stesso cantiere scelto sopra, fai la foto del bollettino e inviala all'admin.</p>
+      <label>Foto bollettino</label>
+      <input id="bollettinoFoto" type="file" accept="image/*" capture="environment">
+      <label>Nota opzionale</label>
+      <textarea id="bollettinoNota" rows="2" placeholder="Esempio: bollettino Sanitas, consegna pannelli..."></textarea>
+      <div class="row">
+        <button type="button" onclick="salvaBollettinoMaterialeWorker()">Invia bollettino con foto</button>
+      </div>
+    </div>
     <div id="matMsg"></div>
     <div id="matStorico" class="table-wrap"></div>`;
   const right = Array.from(appBox.querySelectorAll('.card')).find(x => (x.textContent || '').includes('Richiesta vacanza'));
@@ -385,12 +396,69 @@ async function salvaRichiestaMaterialeWorker(){
     msg($('matMsg'), e.message + ' - Se manca la tabella, esegui setup_richieste_materiale.sql in Supabase.', 'error');
   }
 }
+async function salvaBollettinoMaterialeWorker(){
+  try{
+    if(!requireDb()) return;
+    const cantiereId = $('matCantiere')?.value || null;
+    const file = $('bollettinoFoto')?.files?.[0] || null;
+    const nota = ($('bollettinoNota')?.value || '').trim();
+    if(!cantiereId){ msg($('matMsg'), 'Scegli il cantiere prima di inviare il bollettino.', 'error'); return; }
+    if(!file){ msg($('matMsg'), 'Fai o scegli una foto del bollettino.', 'error'); return; }
+    if(file.size > 8 * 1024 * 1024){ msg($('matMsg'), 'Foto troppo grande. Massimo 8 MB.', 'error'); return; }
+
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const path = `${cantiereId}/${session.user.id}/${safeName}`;
+
+    msg($('matMsg'), 'Carico il bollettino...');
+    const up = await db.storage.from('bollettini-materiale').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || 'image/jpeg'
+    });
+    if(up.error) throw up.error;
+
+    const row = {
+      collaboratore_id: session.user.id,
+      cantiere_id: cantiereId,
+      nome_file: file.name || safeName,
+      percorso_file: path,
+      note: nota,
+      stato: 'da_visionare',
+      created_at: new Date().toISOString()
+    };
+    await q(db.from('bollettini_materiale').insert(row));
+
+    const cantiereTxt = ($('matCantiere')?.selectedOptions?.[0]?.textContent || '-').trim();
+    await inviaNotificaEmailAdmin('materiale', {
+      tipo: 'Bollettino materiale',
+      collaboratore: `${session?.user?.cognome || ''} ${session?.user?.nome || ''}`.trim(),
+      cantiere: cantiereTxt,
+      materiale: nota ? `Bollettino con foto. Nota: ${nota}` : 'Bollettino con foto',
+      data: todayISO()
+    });
+
+    if($('bollettinoFoto')) $('bollettinoFoto').value = '';
+    if($('bollettinoNota')) $('bollettinoNota').value = '';
+    msg($('matMsg'), 'Bollettino inviato correttamente. L\'admin lo può visionare e poi eliminare.', 'success');
+    await caricaMaterialeWorker();
+  }catch(e){
+    msg($('matMsg'), (e.message || e) + ' - Se manca la tabella o lo Storage, esegui SQL_BOLLETTINI_MATERIALE_SUPABASE.sql in Supabase.', 'error');
+  }
+}
+
 async function caricaMaterialeWorker(){
   const box = $('matStorico');
   if(!box || !session?.user?.id) return;
   try{
     const rows = await q(db.from('richieste_materiale').select('*,cantieri(codice,nome)').eq('collaboratore_id', session.user.id).order('created_at',{ascending:false}).limit(10));
-    box.innerHTML = rows.length ? `<h3>Ultime richieste materiale</h3><table><tr><th>Data</th><th>Cantiere</th><th>Materiale</th><th>Stato</th></tr>${rows.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.materiale||'')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '<p class="muted">Nessuna richiesta materiale.</p>';
+    let bollettini = [];
+    try{
+      bollettini = await q(db.from('bollettini_materiale').select('*,cantieri(codice,nome)').eq('collaboratore_id', session.user.id).order('created_at',{ascending:false}).limit(10));
+    }catch(_e){ bollettini = []; }
+    const richiesteHtml = rows.length ? `<h3>Ultime richieste materiale</h3><table><tr><th>Data</th><th>Cantiere</th><th>Materiale</th><th>Stato</th></tr>${rows.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.materiale||'')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '<p class="muted">Nessuna richiesta materiale.</p>';
+    const bollettiniHtml = bollettini.length ? `<h3>Ultimi bollettini inviati</h3><table><tr><th>Data</th><th>Cantiere</th><th>Nota</th><th>Stato</th></tr>${bollettini.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.note||'-')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '';
+    box.innerHTML = richiesteHtml + bollettiniHtml;
   }catch(e){
     box.innerHTML = `<div class="error">Richieste materiale non disponibili. Esegui setup_richieste_materiale_fix.sql.</div>`;
   }
@@ -413,11 +481,75 @@ async function aggiornaBadgeMaterialeAdmin(){
   }
 }
 window.aggiornaBadgeMaterialeAdmin = aggiornaBadgeMaterialeAdmin;
+async function tpBollettinoPublicUrl(path){
+  try{
+    const res = db.storage.from('bollettini-materiale').getPublicUrl(path);
+    return res?.data?.publicUrl || '';
+  }catch(_e){ return ''; }
+}
+async function tpScaricaBollettino(id, path){
+  try{
+    const url = await tpBollettinoPublicUrl(path);
+    if(!url) throw new Error('Link foto non disponibile.');
+    window.open(url, '_blank');
+  }catch(e){ msg($('adminMaterialeMsg'), e.message || e, 'error'); }
+}
+async function eliminaBollettinoMateriale(id, path){
+  try{
+    if(!confirm('Vuoi eliminare definitivamente questo bollettino/foto per liberare spazio?')) return;
+    if(path){
+      const rem = await db.storage.from('bollettini-materiale').remove([path]);
+      if(rem.error) console.warn('Errore eliminazione foto bollettino:', rem.error.message || rem.error);
+    }
+    await q(db.from('bollettini_materiale').delete().eq('id', id));
+    msg($('adminMaterialeMsg'), 'Bollettino eliminato.');
+    await caricaMaterialeAdmin();
+  }catch(e){ msg($('adminMaterialeMsg'), e.message || e, 'error'); }
+}
+async function segnaBollettinoVisionato(id){
+  try{
+    await q(db.from('bollettini_materiale').update({stato:'visionato'}).eq('id', id));
+    await caricaMaterialeAdmin();
+  }catch(e){ msg($('adminMaterialeMsg'), e.message || e, 'error'); }
+}
+function renderBollettiniMaterialeAdmin(rows){
+  const cantieri = Array.from(new Map(rows.map(r=>[r.cantiere_id, `${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-']).filter(x=>x[0])).entries());
+  const filter = `<div class="tp-bollettini-filter"><label>Filtra bollettini per cantiere</label><select id="bollettiniFiltroCantiere" onchange="tpFiltroBollettiniCantiere()"><option value="">Tutti i cantieri</option>${cantieri.map(([id,txt])=>`<option value="${escapeHtml(id)}">${escapeHtml(txt)}</option>`).join('')}</select></div>`;
+  if(!rows.length) return `<section class="tp-bollettini-admin"><h3>Bollettini materiale</h3>${filter}<p class="muted">Nessun bollettino materiale caricato.</p></section>`;
+  return `<section class="tp-bollettini-admin"><h3>Bollettini materiale da visionare</h3><p class="muted">Qui vedi i bollettini fotografati dai collaboratori. A fine mese puoi aprirli/scaricarli e poi eliminarli per liberare spazio.</p>${filter}<div class="materiale-mobile-list tp-bollettini-list">${rows.map(r=>{
+    const collaboratore = `${r.collaboratori?.cognome||''} ${r.collaboratori?.nome||''}`.trim() || '-';
+    const cantiere = `${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-';
+    const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
+    const stato = r.stato || 'da_visionare';
+    return `<article class="materiale-card tp-bollettino-card" data-cantiere-id="${escapeHtml(r.cantiere_id || '')}">
+      <div class="materiale-card-head"><div><div class="materiale-card-title">${escapeHtml(collaboratore)}</div><div class="materiale-card-date">${escapeHtml(data)}</div></div><div>${badgeStatoMateriale(stato)}</div></div>
+      <div class="materiale-card-row"><span>Cantiere</span><b>${escapeHtml(cantiere)}</b></div>
+      <div class="materiale-card-row materiale-card-text"><span>Nota</span><b>${escapeHtml(r.note || '-')}</b></div>
+      <div class="materiale-card-actions">
+        <button type="button" onclick="tpScaricaBollettino('${r.id}','${escapeHtml(r.percorso_file || '')}')">Apri / scarica foto</button>
+        ${stato !== 'visionato' ? `<button type="button" class="secondary" onclick="segnaBollettinoVisionato('${r.id}')">Segna visionato</button>` : ''}
+        <button type="button" class="ghost" onclick="eliminaBollettinoMateriale('${r.id}','${escapeHtml(r.percorso_file || '')}')">Elimina</button>
+      </div>
+    </article>`;
+  }).join('')}</div></section>`;
+}
+function tpFiltroBollettiniCantiere(){
+  const val = $('bollettiniFiltroCantiere')?.value || '';
+  document.querySelectorAll('.tp-bollettino-card').forEach(card=>{
+    card.style.display = (!val || card.dataset.cantiereId === val) ? '' : 'none';
+  });
+}
+
 async function caricaMaterialeAdmin(){
   const box = $('adminMaterialeBox');
   if(!box) return;
   try{
     const rows = await q(db.from('richieste_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(200));
+    let bollettini = [];
+    try{
+      bollettini = await q(db.from('bollettini_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(300));
+    }catch(_e){ bollettini = []; }
+    const bollettiniHtml = renderBollettiniMaterialeAdmin(bollettini);
     const evase = rows.filter(r => r.stato === 'evasa');
     const aperte = rows.filter(r => r.stato === 'in_attesa');
     const toolbar = `<div class="materiale-mobile-toolbar">
@@ -426,13 +558,13 @@ async function caricaMaterialeAdmin(){
     </div>`;
 
     if(!rows.length){
-      box.innerHTML = `${toolbar}<p class="muted">Nessuna richiesta materiale.</p>`;
-      msg($('adminMaterialeMsg'), 'Nessuna richiesta materiale.');
+      box.innerHTML = `${toolbar}${bollettiniHtml}<p class="muted">Nessuna richiesta materiale da ordinare.</p>`;
+      msg($('adminMaterialeMsg'), 'Materiale caricato.');
       await aggiornaBadgeMaterialeAdmin();
       return;
     }
 
-    box.innerHTML = `${toolbar}
+    box.innerHTML = `${toolbar}${bollettiniHtml}
       <div class="materiale-mobile-summary">
         <span><b>${aperte.length}</b> da evadere</span>
         <span><b>${evase.length}</b> evase</span>
@@ -504,6 +636,11 @@ async function eliminaMaterialeEseguito(){
 window.installMaterialeWorkerUI = installMaterialeWorkerUI;
 window.tpStartVoiceMateriale = tpStartVoiceMateriale;
 window.salvaRichiestaMaterialeWorker = salvaRichiestaMaterialeWorker;
+window.salvaBollettinoMaterialeWorker = salvaBollettinoMaterialeWorker;
+window.tpScaricaBollettino = tpScaricaBollettino;
+window.eliminaBollettinoMateriale = eliminaBollettinoMateriale;
+window.segnaBollettinoVisionato = segnaBollettinoVisionato;
+window.tpFiltroBollettiniCantiere = tpFiltroBollettiniCantiere;
 window.caricaMaterialeAdmin = caricaMaterialeAdmin;
 window.setRichiestaMateriale = setRichiestaMateriale;
 window.eliminaRichiestaMateriale = eliminaRichiestaMateriale;
