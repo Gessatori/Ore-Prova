@@ -305,6 +305,22 @@
     <p class="hint">Qui vedi le ore divise per operaio nel cantiere attivo.</p>
   </section>
 
+  <section class="card">
+    <h2>Margine collaboratori per cantiere</h2>
+    <p class="hint">Il margine viene ripartito in base alla quota ore del collaboratore sul cantiere: quota totale cantiere - costo ore collaboratore - quota materiali. In questo modo la somma dei collaboratori corrisponde al margine totale del cantiere.</p>
+    <div class="grid">
+      <div>
+        <h3>Contributo nel cantiere attivo</h3>
+        <div class="table-wrap"><table class="small" id="margineOperaiCantiere"></table></div>
+      </div>
+      <div>
+        <h3>Classifica collaboratori</h3>
+        <div class="table-wrap"><table class="small" id="classificaMargineOperai"></table></div>
+      </div>
+    </div>
+  </section>
+
+
   <div class="grid">
     <section class="card">
       <h2>Tutti i cantieri con totali</h2>
@@ -1094,6 +1110,97 @@ function renderOperai(){
     `<tr class="total"><td>TOTALE</td>${TIPI.map(t=>`<td class="num">${fmt(tot[t.key])}</td>`).join("")}<td class="num">${fmt(tot.totale)}</td><td class="num">${fmt(tot.costo)}</td></tr>`;
 }
 
+
+function oreOperaiPerCantiere(c){
+  const costoOra = stato.costiOra[c] || 60;
+  const mappa = {};
+  stato.ore.filter(r=>r.cantiere===c).forEach(r=>{
+    const nome = String(r.operaio || "Senza nome").trim() || "Senza nome";
+    if(!mappa[nome]){
+      mappa[nome] = {operaio:nome, totale:0, costo:0, tipi:{}};
+      TIPI.forEach(t=>mappa[nome].tipi[t.key]=0);
+    }
+    const tipo = r.tipo || "altro";
+    const ore = Number(r.ore || 0);
+    const co = tipo === "dividere" ? 20 : costoOra;
+    mappa[nome].tipi[tipo] = (mappa[nome].tipi[tipo] || 0) + ore;
+    mappa[nome].totale += ore;
+    mappa[nome].costo += ore * co;
+  });
+  return Object.values(mappa);
+}
+
+function marginiCollaboratoriCantiere(c){
+  const operai = oreOperaiPerCantiere(c);
+  const oreTotali = operai.reduce((s,o)=>s + Number(o.totale || 0), 0);
+  const totale = totaleGenerale(c);
+  const materiali = sommaMateriali(c);
+  return operai.map(o=>{
+    const quota = oreTotali > 0 ? o.totale / oreTotali : 0;
+    const quotaTotale = totale * quota;
+    const quotaMateriali = materiali * quota;
+    const margine = quotaTotale - o.costo - quotaMateriali;
+    const percentuale = quotaTotale > 0 ? (margine / quotaTotale) * 100 : 0;
+    return {operaio:o.operaio, cantiere:c, ore:o.totale, quota, quotaTotale, costoOre:o.costo, quotaMateriali, margine, percentuale};
+  }).sort((a,b)=>b.margine-a.margine || b.ore-a.ore || a.operaio.localeCompare(b.operaio));
+}
+
+function renderMargineCollaboratori(){
+  const tableCantiere = document.getElementById("margineOperaiCantiere");
+  const tableClassifica = document.getElementById("classificaMargineOperai");
+  if(!tableCantiere && !tableClassifica) return;
+  const c = stato.cantiereAttivo;
+
+  if(tableCantiere){
+    const rows = c ? marginiCollaboratoriCantiere(c) : [];
+    let tot = {ore:0, quotaTotale:0, costoOre:0, quotaMateriali:0, margine:0};
+    const righe = rows.map((r,i)=>{
+      tot.ore += r.ore;
+      tot.quotaTotale += r.quotaTotale;
+      tot.costoOre += r.costoOre;
+      tot.quotaMateriali += r.quotaMateriali;
+      tot.margine += r.margine;
+      return `<tr><td>${i+1}</td><td>${r.operaio}</td><td class="num">${fmt(r.ore)}</td><td class="num">${fmtPct(r.quota*100)}</td><td class="num">${fmt(r.quotaTotale)}</td><td class="num">${fmt(r.costoOre)}</td><td class="num">${fmt(r.quotaMateriali)}</td><td class="num ${clsNum(r.margine)}">${fmt(r.margine)}</td><td class="num ${clsNum(r.percentuale)}">${fmtPct(r.percentuale)}</td></tr>`;
+    }).join("");
+    const pct = tot.quotaTotale > 0 ? (tot.margine / tot.quotaTotale) * 100 : 0;
+    tableCantiere.innerHTML =
+      `<tr><th>#</th><th>Collaboratore</th><th>Ore</th><th>Quota ore</th><th>Quota totale CHF</th><th>Costo ore CHF</th><th>Quota materiali CHF</th><th>Margine contribuito CHF</th><th>% margine</th></tr>` +
+      (righe || `<tr><td colspan="9">Nessuna ora inserita per questo cantiere.</td></tr>`) +
+      `<tr class="total"><td></td><td>TOTALE</td><td class="num">${fmt(tot.ore)}</td><td class="num">${fmtPct(100)}</td><td class="num">${fmt(tot.quotaTotale)}</td><td class="num">${fmt(tot.costoOre)}</td><td class="num">${fmt(tot.quotaMateriali)}</td><td class="num ${clsNum(tot.margine)}">${fmt(tot.margine)}</td><td class="num ${clsNum(pct)}">${fmtPct(pct)}</td></tr>`;
+  }
+
+  if(tableClassifica){
+    const agg = {};
+    cantieri().forEach(nomeCantiere=>{
+      marginiCollaboratoriCantiere(nomeCantiere).forEach(r=>{
+        if(!agg[r.operaio]) agg[r.operaio] = {operaio:r.operaio, cantieri:new Set(), ore:0, quotaTotale:0, costoOre:0, quotaMateriali:0, margine:0};
+        agg[r.operaio].cantieri.add(nomeCantiere);
+        agg[r.operaio].ore += r.ore;
+        agg[r.operaio].quotaTotale += r.quotaTotale;
+        agg[r.operaio].costoOre += r.costoOre;
+        agg[r.operaio].quotaMateriali += r.quotaMateriali;
+        agg[r.operaio].margine += r.margine;
+      });
+    });
+    const rows = Object.values(agg).sort((a,b)=>b.margine-a.margine || b.ore-a.ore || a.operaio.localeCompare(b.operaio));
+    let tot = {ore:0, quotaTotale:0, costoOre:0, quotaMateriali:0, margine:0};
+    const righe = rows.map((r,i)=>{
+      tot.ore += r.ore;
+      tot.quotaTotale += r.quotaTotale;
+      tot.costoOre += r.costoOre;
+      tot.quotaMateriali += r.quotaMateriali;
+      tot.margine += r.margine;
+      const pct = r.quotaTotale > 0 ? (r.margine / r.quotaTotale) * 100 : 0;
+      return `<tr><td>${i+1}</td><td>${r.operaio}</td><td class="num">${r.cantieri.size}</td><td class="num">${fmt(r.ore)}</td><td class="num">${fmt(r.quotaTotale)}</td><td class="num">${fmt(r.costoOre)}</td><td class="num">${fmt(r.quotaMateriali)}</td><td class="num ${clsNum(r.margine)}">${fmt(r.margine)}</td><td class="num ${clsNum(pct)}">${fmtPct(pct)}</td></tr>`;
+    }).join("");
+    const totPct = tot.quotaTotale > 0 ? (tot.margine / tot.quotaTotale) * 100 : 0;
+    tableClassifica.innerHTML =
+      `<tr><th>#</th><th>Collaboratore</th><th>Cantieri</th><th>Ore</th><th>Quota totale CHF</th><th>Costo ore CHF</th><th>Quota materiali CHF</th><th>Margine CHF</th><th>% margine</th></tr>` +
+      (righe || `<tr><td colspan="9">Nessuna ora inserita nei cantieri attivi.</td></tr>`) +
+      `<tr class="total"><td></td><td>TOTALE</td><td></td><td class="num">${fmt(tot.ore)}</td><td class="num">${fmt(tot.quotaTotale)}</td><td class="num">${fmt(tot.costoOre)}</td><td class="num">${fmt(tot.quotaMateriali)}</td><td class="num ${clsNum(tot.margine)}">${fmt(tot.margine)}</td><td class="num ${clsNum(totPct)}">${fmtPct(totPct)}</td></tr>`;
+  }
+}
+
 function renderDettagli(){
   const c = stato.cantiereAttivo;
   document.getElementById("dettaglioOre").innerHTML =
@@ -1120,6 +1227,7 @@ function render(){
   renderCantieriTerminati();
   renderDettagli();
   renderOperai();
+  renderMargineCollaboratori();
   salva();
 }
 
