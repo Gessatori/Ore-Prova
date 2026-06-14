@@ -861,15 +861,18 @@ function installMaterialeMobileCardsStyle(){
     .tp-bollettini-list{padding:0 12px 12px 12px;}
     .tp-bollettini-list[hidden]{display:none!important;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
-    /* Mobile collaboratore: richiesta materiale e bollettini sempre dentro lo schermo. */
+    /* Mobile collaboratore: richiesta materiale e bollettini con gli stessi criteri delle altre sezioni. */
     #materialeBox,
     #materialeBox *{box-sizing:border-box;}
-    #materialeBox{max-width:100%;overflow:hidden;}
+    #materialeBox{max-width:100%;overflow-x:hidden;overflow-y:visible;}
+    #materialeBox .worker-back-menu{position:sticky;top:10px;z-index:40;display:inline-flex!important;align-items:center;justify-content:center;width:auto!important;max-width:calc(100vw - 36px)!important;min-height:44px!important;border-radius:999px!important;padding:10px 16px!important;font-size:15px!important;font-weight:900!important;line-height:1.15!important;margin:0 0 16px 0!important;box-shadow:0 6px 16px rgba(8,43,99,.10);}
+    #materialeBox h2{margin-top:4px;}
+    #materialeBox label{display:block;margin-top:14px;margin-bottom:6px;font-weight:900;color:#082b63;}
     #materialeBox .row,
-    #materialeBox .tp-bollettino-box .row{display:flex!important;flex-direction:column!important;gap:14px!important;align-items:stretch!important;width:100%;max-width:100%;}
-    #materialeBox button,
+    #materialeBox .tp-bollettino-box .row{display:grid!important;grid-template-columns:1fr!important;gap:14px!important;align-items:stretch!important;width:100%;max-width:100%;margin-top:14px;}
+    #materialeBox button:not(.worker-back-menu),
     #materialeBox .row button,
-    #materialeBox .tp-bollettino-box button{display:block;width:100%!important;max-width:100%!important;min-width:0!important;min-height:64px;border-radius:18px;font-size:18px;font-weight:900;white-space:normal;line-height:1.2;padding:16px 14px;margin-left:0!important;margin-right:0!important;}
+    #materialeBox .tp-bollettino-box button{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;max-width:100%!important;min-width:0!important;min-height:66px!important;border-radius:18px!important;font-size:18px!important;font-weight:900!important;white-space:normal!important;line-height:1.2!important;padding:16px 14px!important;margin-left:0!important;margin-right:0!important;text-align:center!important;}
     #materialeBox input,
     #materialeBox input[type="file"],
     #materialeBox textarea,
@@ -877,7 +880,16 @@ function installMaterialeMobileCardsStyle(){
     #materialeBox .choice-buttons,
     #materialeBox .choice-search,
     #materialeBox .choice-search-row{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box;}
-    #materialeBox input[type="file"]{font-size:16px;padding:12px;min-height:54px;overflow:hidden;}
+    #materialeBox textarea{min-height:120px;}
+    #materialeBox input[type="file"]{font-size:16px;padding:13px;min-height:58px;overflow:hidden;border-radius:16px;}
+    #materialeBox .tp-bollettino-box{margin-top:22px;padding-top:18px;border-top:1px solid #e3eaf4;}
+    @media(max-width:700px){
+      #materialeBox{border-radius:22px;padding:16px!important;}
+      #materialeBox h2{font-size:28px;line-height:1.05;}
+      #materialeBox h3{font-size:24px;line-height:1.1;}
+      #materialeBox p.muted{font-size:16px;line-height:1.35;}
+      #materialeBox button:not(.worker-back-menu){min-height:68px!important;font-size:18px!important;}
+    }
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
       .materiale-mobile-summary{grid-template-columns:1fr 1fr 1fr;}
