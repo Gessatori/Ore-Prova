@@ -655,14 +655,16 @@ function renderBollettiniMaterialeAdmin(rows){
 
   const gruppiHtml = Array.from(gruppi.values()).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''), 'it')).map(gruppo=>{
     const aperti = gruppo.righe.filter(r => (r.stato || 'da_visionare') !== 'visionato').length;
-    return `<div class="tp-bollettino-gruppo" data-cantiere-id="${escapeHtml(gruppo.id)}">
-      <div class="tp-bollettino-gruppo-head">
+    const gid = escapeHtml(gruppo.id);
+    return `<div class="tp-bollettino-gruppo tp-bollettino-chiuso" data-cantiere-id="${gid}">
+      <button type="button" class="tp-bollettino-gruppo-head" onclick="tpToggleBollettiniCantiere('${gid}')" aria-expanded="false">
         <div>
           <div class="tp-bollettino-gruppo-title">${escapeHtml(gruppo.nome)}</div>
           <div class="muted">${gruppo.righe.length} bollettino/i${aperti ? ` · ${aperti} da visionare` : ''}</div>
         </div>
-      </div>
-      <div class="materiale-mobile-list tp-bollettini-list">
+        <span class="tp-bollettino-toggle-label">Apri</span>
+      </button>
+      <div class="materiale-mobile-list tp-bollettini-list" hidden>
         ${gruppo.righe.map(r=>{
           const collaboratore = r.collaboratore_nome || '-';
           const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
@@ -681,12 +683,36 @@ function renderBollettiniMaterialeAdmin(rows){
     </div>`;
   }).join('');
 
-  return `<section class="tp-bollettini-admin"><h3>Bollettini materiale per cantiere</h3><p class="muted">Qui vedi tutti i bollettini fotografati, raggruppati per cantiere. A fine mese selezioni il cantiere, apri/scarichi le foto e poi le elimini per liberare spazio.</p>${filter}${gruppiHtml}</section>`;
+  return `<section class="tp-bollettini-admin"><h3>Bollettini materiale per cantiere</h3><p class="muted">I bollettini restano nascosti: clicca sul cantiere per aprire la lista. A fine mese selezioni il cantiere, apri/scarichi le foto e poi le elimini per liberare spazio.</p>${filter}${gruppiHtml}</section>`;
+}
+function tpToggleBollettiniCantiere(cantiereId){
+  const gruppo = document.querySelector(`.tp-bollettino-gruppo[data-cantiere-id="${CSS.escape(String(cantiereId || ''))}"]`);
+  if(!gruppo) return;
+  const lista = gruppo.querySelector('.tp-bollettini-list');
+  const bottone = gruppo.querySelector('.tp-bollettino-gruppo-head');
+  const label = gruppo.querySelector('.tp-bollettino-toggle-label');
+  const apri = lista?.hasAttribute('hidden');
+  if(lista) lista.toggleAttribute('hidden', !apri);
+  gruppo.classList.toggle('tp-bollettino-aperto', !!apri);
+  gruppo.classList.toggle('tp-bollettino-chiuso', !apri);
+  if(bottone) bottone.setAttribute('aria-expanded', apri ? 'true' : 'false');
+  if(label) label.textContent = apri ? 'Chiudi' : 'Apri';
 }
 function tpFiltroBollettiniCantiere(){
   const val = $('bollettiniFiltroCantiere')?.value || '';
   document.querySelectorAll('.tp-bollettino-gruppo').forEach(gruppo=>{
-    gruppo.style.display = (!val || gruppo.dataset.cantiereId === val) ? '' : 'none';
+    const show = !val || gruppo.dataset.cantiereId === val;
+    gruppo.style.display = show ? '' : 'none';
+    if(val && show){
+      const lista = gruppo.querySelector('.tp-bollettini-list');
+      const bottone = gruppo.querySelector('.tp-bollettino-gruppo-head');
+      const label = gruppo.querySelector('.tp-bollettino-toggle-label');
+      if(lista) lista.removeAttribute('hidden');
+      gruppo.classList.add('tp-bollettino-aperto');
+      gruppo.classList.remove('tp-bollettino-chiuso');
+      if(bottone) bottone.setAttribute('aria-expanded', 'true');
+      if(label) label.textContent = 'Chiudi';
+    }
   });
 }
 
@@ -793,6 +819,7 @@ window.eliminaBollettinoMateriale = eliminaBollettinoMateriale;
 window.segnaBollettinoVisionato = segnaBollettinoVisionato;
 window.salvaBollettinoMaterialeAdmin = salvaBollettinoMaterialeAdmin;
 window.tpFiltroBollettiniCantiere = tpFiltroBollettiniCantiere;
+window.tpToggleBollettiniCantiere = tpToggleBollettiniCantiere;
 window.caricaMaterialeAdmin = caricaMaterialeAdmin;
 window.setRichiestaMateriale = setRichiestaMateriale;
 window.eliminaRichiestaMateriale = eliminaRichiestaMateriale;
@@ -825,9 +852,13 @@ function installMaterialeMobileCardsStyle(){
     .tp-bollettini-filter{margin:10px 0 14px 0;}
     .tp-bollettini-filter label{display:block;font-weight:900;margin-bottom:6px;color:#082b63;}
     .tp-bollettini-filter select{width:100%;}
-    .tp-bollettino-gruppo{border:1px solid #d6e2f0;border-radius:18px;background:#f8fbff;padding:12px;margin:12px 0;}
-    .tp-bollettino-gruppo-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;}
+    .tp-bollettino-gruppo{border:1px solid #d6e2f0;border-radius:18px;background:#f8fbff;padding:0;margin:12px 0;overflow:hidden;}
+    .tp-bollettino-gruppo-head{display:flex;justify-content:space-between;gap:10px;align-items:center;width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:14px;cursor:pointer;}
+    .tp-bollettino-gruppo-head:hover{background:#eef6ff;}
     .tp-bollettino-gruppo-title{font-size:20px;font-weight:900;color:#082b63;}
+    .tp-bollettino-toggle-label{font-weight:900;color:#0b64d8;background:#e7f0ff;border-radius:999px;padding:8px 12px;white-space:nowrap;}
+    .tp-bollettini-list{padding:0 12px 12px 12px;}
+    .tp-bollettini-list[hidden]{display:none!important;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
