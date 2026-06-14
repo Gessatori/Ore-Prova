@@ -726,7 +726,7 @@ async function caricaMaterialeAdmin(){
     try{
       bollettini = await q(db.from('bollettini_materiale').select('*').order('created_at',{ascending:false}).limit(300));
     }catch(_e){ bollettini = []; }
-    const bollettinoUploadHtml = renderAdminBollettinoUpload(); // Admin: puo inserire bollettini, ma non crea richieste materiale.
+    const bollettinoUploadHtml = renderAdminBollettinoUploadForm(); // Admin: puo inserire bollettini, ma non crea richieste materiale.
     const bollettiniListaHtml = renderBollettiniMaterialeAdmin(bollettini);
     const evase = rows.filter(r => r.stato === 'evasa');
     const aperte = rows.filter(r => r.stato === 'in_attesa');
