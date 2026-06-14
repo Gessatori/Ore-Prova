@@ -370,7 +370,7 @@ function tpStartVoiceMateriale(){
 async function salvaRichiestaMaterialeWorker(){
   try{
     if(!requireDb()) return;
-    const cantiereId = $('matCantiere')?.value || null;
+    const cantiereId = String($('matCantiere')?.value || '').trim() || null;
     const materiale = ($('matDescrizione')?.value || '').trim();
     if(!materiale){ msg($('matMsg'), 'Scrivi o detta il materiale richiesto.', 'error'); return; }
     const row = {
@@ -399,7 +399,7 @@ async function salvaRichiestaMaterialeWorker(){
 async function salvaBollettinoMaterialeWorker(){
   try{
     if(!requireDb()) return;
-    const cantiereId = $('matCantiere')?.value || null;
+    const cantiereId = String($('matCantiere')?.value || '').trim() || null;
     const file = $('bollettinoFoto')?.files?.[0] || null;
     const nota = ($('bollettinoNota')?.value || '').trim();
     if(!cantiereId){ msg($('matMsg'), 'Scegli il cantiere prima di inviare il bollettino.', 'error'); return; }
@@ -418,9 +418,13 @@ async function salvaBollettinoMaterialeWorker(){
     });
     if(up.error) throw up.error;
 
+    const cantiereTxt = ($('matCantiere')?.selectedOptions?.[0]?.textContent || '-').trim();
+    const collaboratoreTxt = `${session?.user?.cognome || ''} ${session?.user?.nome || ''}`.trim();
     const row = {
-      collaboratore_id: session.user.id,
-      cantiere_id: cantiereId,
+      collaboratore_id: String(session.user.id || ''),
+      collaboratore_nome: collaboratoreTxt,
+      cantiere_id: String(cantiereId),
+      cantiere_nome: cantiereTxt,
       nome_file: file.name || safeName,
       percorso_file: path,
       note: nota,
@@ -429,10 +433,9 @@ async function salvaBollettinoMaterialeWorker(){
     };
     await q(db.from('bollettini_materiale').insert(row));
 
-    const cantiereTxt = ($('matCantiere')?.selectedOptions?.[0]?.textContent || '-').trim();
     await inviaNotificaEmailAdmin('materiale', {
       tipo: 'Bollettino materiale',
-      collaboratore: `${session?.user?.cognome || ''} ${session?.user?.nome || ''}`.trim(),
+      collaboratore: collaboratoreTxt,
       cantiere: cantiereTxt,
       materiale: nota ? `Bollettino con foto. Nota: ${nota}` : 'Bollettino con foto',
       data: todayISO()
@@ -454,10 +457,10 @@ async function caricaMaterialeWorker(){
     const rows = await q(db.from('richieste_materiale').select('*,cantieri(codice,nome)').eq('collaboratore_id', session.user.id).order('created_at',{ascending:false}).limit(10));
     let bollettini = [];
     try{
-      bollettini = await q(db.from('bollettini_materiale').select('*,cantieri(codice,nome)').eq('collaboratore_id', session.user.id).order('created_at',{ascending:false}).limit(10));
+      bollettini = await q(db.from('bollettini_materiale').select('*').eq('collaboratore_id', String(session.user.id || '')).order('created_at',{ascending:false}).limit(10));
     }catch(_e){ bollettini = []; }
     const richiesteHtml = rows.length ? `<h3>Ultime richieste materiale</h3><table><tr><th>Data</th><th>Cantiere</th><th>Materiale</th><th>Stato</th></tr>${rows.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.materiale||'')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '<p class="muted">Nessuna richiesta materiale.</p>';
-    const bollettiniHtml = bollettini.length ? `<h3>Ultimi bollettini inviati</h3><table><tr><th>Data</th><th>Cantiere</th><th>Nota</th><th>Stato</th></tr>${bollettini.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.note||'-')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '';
+    const bollettiniHtml = bollettini.length ? `<h3>Ultimi bollettini inviati</h3><table><tr><th>Data</th><th>Cantiere</th><th>Nota</th><th>Stato</th></tr>${bollettini.map(r=>`<tr><td>${String(r.created_at||'').slice(0,10)}</td><td>${escapeHtml(r.cantiere_nome || '-')}</td><td>${escapeHtml(r.note||'-')}</td><td>${badgeStatoMateriale(r.stato)}</td></tr>`).join('')}</table>` : '';
     box.innerHTML = richiesteHtml + bollettiniHtml;
   }catch(e){
     box.innerHTML = `<div class="error">Richieste materiale non disponibili. Esegui setup_richieste_materiale_fix.sql.</div>`;
@@ -513,12 +516,12 @@ async function segnaBollettinoVisionato(id){
   }catch(e){ msg($('adminMaterialeMsg'), e.message || e, 'error'); }
 }
 function renderBollettiniMaterialeAdmin(rows){
-  const cantieri = Array.from(new Map(rows.map(r=>[r.cantiere_id, `${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-']).filter(x=>x[0])).entries());
+  const cantieri = Array.from(new Map(rows.map(r=>[String(r.cantiere_id || ''), r.cantiere_nome || '-']).filter(x=>x[0])).entries());
   const filter = `<div class="tp-bollettini-filter"><label>Filtra bollettini per cantiere</label><select id="bollettiniFiltroCantiere" onchange="tpFiltroBollettiniCantiere()"><option value="">Tutti i cantieri</option>${cantieri.map(([id,txt])=>`<option value="${escapeHtml(id)}">${escapeHtml(txt)}</option>`).join('')}</select></div>`;
   if(!rows.length) return `<section class="tp-bollettini-admin"><h3>Bollettini materiale</h3>${filter}<p class="muted">Nessun bollettino materiale caricato.</p></section>`;
   return `<section class="tp-bollettini-admin"><h3>Bollettini materiale da visionare</h3><p class="muted">Qui vedi i bollettini fotografati dai collaboratori. A fine mese puoi aprirli/scaricarli e poi eliminarli per liberare spazio.</p>${filter}<div class="materiale-mobile-list tp-bollettini-list">${rows.map(r=>{
-    const collaboratore = `${r.collaboratori?.cognome||''} ${r.collaboratori?.nome||''}`.trim() || '-';
-    const cantiere = `${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-';
+    const collaboratore = r.collaboratore_nome || '-';
+    const cantiere = r.cantiere_nome || '-';
     const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
     const stato = r.stato || 'da_visionare';
     return `<article class="materiale-card tp-bollettino-card" data-cantiere-id="${escapeHtml(r.cantiere_id || '')}">
@@ -547,7 +550,7 @@ async function caricaMaterialeAdmin(){
     const rows = await q(db.from('richieste_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(200));
     let bollettini = [];
     try{
-      bollettini = await q(db.from('bollettini_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(300));
+      bollettini = await q(db.from('bollettini_materiale').select('*').order('created_at',{ascending:false}).limit(300));
     }catch(_e){ bollettini = []; }
     const bollettiniHtml = renderBollettiniMaterialeAdmin(bollettini);
     const evase = rows.filter(r => r.stato === 'evasa');
