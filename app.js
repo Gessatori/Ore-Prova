@@ -1334,6 +1334,7 @@ async function initWorker(){
   if(!requireDb()) return;
   await loadBase();
   if(session?.role!=='worker'){ $('loginBox').classList.remove('hidden'); return; }
+  if($('loginBox')) $('loginBox').classList.add('hidden');
   $('appBox').classList.remove('hidden');
   $('workerName').textContent = `${session.user.cognome} ${session.user.nome}`;
   $('todayLabel').textContent = new Date().toLocaleDateString('it-CH');
@@ -1516,6 +1517,7 @@ async function initAdmin(){
   fillMonths($('adminMese'));
   if(!requireDb()) return;
   if(session?.role!=='admin'){ $('adminLoginBox').classList.remove('hidden'); return; }
+  if($('adminLoginBox')) $('adminLoginBox').classList.add('hidden');
   $('adminBox').classList.remove('hidden');
   await loadBase();
   $('dashDate').value=todayISO(); $('adminAnno').value=new Date().getFullYear(); $('admOreData').value=todayISO(); if($('regData')) $('regData').value=todayISO(); if($('regAnno')) $('regAnno').value=new Date().getFullYear(); fillMonths($('regMese')); fillMonths($('calMeseVista')); if($('regMese')) $('regMese').value=new Date().getMonth()+1;
@@ -3880,9 +3882,17 @@ function installTecnoplafonLayoutPulito(){
 }
 function installTecnoplafonLogoHeader(){
   installTecnoplafonLayoutPulito();
-  const target = $('adminBox') || $('appBox') || $('adminLoginBox') || $('loginBox') || document.body;
+  const page = document.body?.dataset?.page || '';
+  const isAdmin = page === 'admin';
+
+  // Collaboratore: il logo deve stare nella schermata di accesso.
+  // Dopo il login non viene mostrato di nuovo, cosi si vede subito il menu/cosa segnare.
+  if(page === 'worker' && session?.role === 'worker') return;
+
+  const target = isAdmin
+    ? ($('adminBox') || $('adminLoginBox') || document.body)
+    : ($('loginBox') || $('appBox') || document.body);
   if(!target || target.querySelector('.tp-logo-header')) return;
-  const isAdmin = document.body?.dataset?.page === 'admin';
   const header = document.createElement('div');
   header.className = 'tp-logo-header';
   header.innerHTML = `
