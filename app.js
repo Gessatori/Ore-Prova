@@ -1911,6 +1911,8 @@ async function caricaOreAdminCollaboratore(){
     const collab = (cache.collab||[]).find(c=>String(c.id)===String(collabId));
     const nome = collab ? `${collab.cognome} ${collab.nome}` : 'Collaboratore';
     const totale = rows.reduce((s,r)=>s+oreToDecimal(r.ore_totali||0),0);
+    const cantieriLavorati = [...new Set(rows.map(r=>`${r.cantieri?.codice || ''} ${r.cantieri?.nome || ''}`.trim()).filter(Boolean))];
+    const testoCantieri = cantieriLavorati.length ? cantieriLavorati.join(' • ') : '-';
 
     if(!rows.length){
       box.innerHTML = `<p class="muted">Nessuna ora inserita per <b>${escapeHtml(nome)}</b> il ${escapeHtml(data)}.</p>`;
@@ -1921,24 +1923,31 @@ async function caricaOreAdminCollaboratore(){
       <div class="summary">
         <div class="box"><span>Collaboratore</span><div class="big">${escapeHtml(nome)}</div></div>
         <div class="box"><span>Data</span><div class="big">${escapeHtml(data)}</div></div>
+        <div class="box"><span>Cantiere/i lavorati</span><div class="big">${escapeHtml(testoCantieri)}</div></div>
         <div class="box"><span>Totale ore</span><div class="big green">${fmtOre(totale)}</div></div>
         <div class="box"><span>Righe</span><div class="big">${fmt(rows.length)}</div></div>
       </div>
       <table>
         <tr>
-          <th>Cantiere / Regia</th><th>Lavorazione</th><th>Sotto-lavorazione</th><th>Ore</th><th>Note</th><th>Azioni</th>
+          <th>Cantiere / Regia lavorata</th><th>Lavorazione</th><th>Sotto-lavorazione</th><th>Ore</th><th>Note</th><th>Azioni</th>
         </tr>
-        ${rows.map(r=>`<tr>
-          <td><select id="admOreCanEdit_${r.id}">${optionsCantieriAdmin(r.cantiere_id)}</select></td>
-          <td><select id="admOreLavEdit_${r.id}" onchange="aggiornaSottoRigaOreAdmin('${r.id}')">${optionsLavorazioniAdmin(r.lavorazione_id)}</select></td>
-          <td><select id="admOreSottoEdit_${r.id}">${optionsSottoAdmin(r.lavorazione_id, r.sotto_lavorazione_id)}</select></td>
-          <td><input id="admOreEdit_${r.id}" type="number" step="0.25" value="${fmtOre(r.ore_totali)}" style="max-width:110px"></td>
-          <td><textarea id="admOreNote_${r.id}" rows="2" placeholder="Note">${escapeHtml(r.note||'')}</textarea></td>
-          <td>
-            <button onclick="salvaRigaOreAdmin('${r.id}')">Salva</button>
-            <button class="secondary" onclick="annullaRigaOreAdmin('${r.id}')">Annulla</button>
-          </td>
-        </tr>`).join('')}
+        ${rows.map(r=>{
+          const cantiereAttuale = `${r.cantieri?.codice || ''} ${r.cantieri?.nome || ''}`.trim() || '-';
+          return `<tr>
+            <td>
+              <div class="muted" style="margin-bottom:4px">Attuale: <b>${escapeHtml(cantiereAttuale)}</b></div>
+              <select id="admOreCanEdit_${r.id}">${optionsCantieriAdmin(r.cantiere_id)}</select>
+            </td>
+            <td><select id="admOreLavEdit_${r.id}" onchange="aggiornaSottoRigaOreAdmin('${r.id}')">${optionsLavorazioniAdmin(r.lavorazione_id)}</select></td>
+            <td><select id="admOreSottoEdit_${r.id}">${optionsSottoAdmin(r.lavorazione_id, r.sotto_lavorazione_id)}</select></td>
+            <td><input id="admOreEdit_${r.id}" type="number" step="0.25" value="${fmtOre(r.ore_totali)}" style="max-width:110px"></td>
+            <td><textarea id="admOreNote_${r.id}" rows="2" placeholder="Note">${escapeHtml(r.note||'')}</textarea></td>
+            <td>
+              <button onclick="salvaRigaOreAdmin('${r.id}')">Salva modifica</button>
+              <button class="secondary" onclick="annullaRigaOreAdmin('${r.id}')">Annulla</button>
+            </td>
+          </tr>`;
+        }).join('')}
       </table>`;
   }catch(e){
     box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
