@@ -949,6 +949,11 @@ window.logout=logout;
 async function loadBase(){
   cache.collab = await q(db.from('collaboratori').select('*').order('cognome'));
   cache.cantieri = await q(db.from('cantieri').select('*').order('id'));
+
+  // Se un cantiere e stato terminato in Supporto Cantieri, lo porta automaticamente
+  // anche nella Gestione Cantieri admin.
+  await tpSincronizzaStatoCantieriDaSupporto();
+
   cache.lavorazioni = await q(db.from('lavorazioni').select('*').order('nome'));
   cache.sotto = await q(db.from('sotto_lavorazioni').select('*').order('nome'));
 }
@@ -1585,6 +1590,60 @@ function tpSupportoNomeOperaio(r){
 function tpSupportoDefaultState(){
   return {ore:[], materiali:[], preventivi:{}, costiOra:{}, cantiereAttivo:'', cantieriManuali:[], totaliGenerali:{}, cantieriTerminati:{}};
 }
+function tpSupportoCantiereKey(v){
+  return String(v || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim()
+    .replace(/\s+/g,' ');
+}
+function tpSupportoCantiereLabels(c){
+  const codice = String(c?.codice || '').trim();
+  const nome = String(c?.nome || '').trim();
+  const localita = String(c?.localita || '').trim();
+  return [
+    `${codice} ${nome}`.trim(),
+    nome,
+    `${codice} ${nome} ${localita}`.trim()
+  ].filter(Boolean).map(tpSupportoCantiereKey);
+}
+function tpSupportoCantiereTerminatoPerTabella(c, terminatiKeys){
+  const labels = tpSupportoCantiereLabels(c);
+  return labels.some(label => terminatiKeys.some(key => key === label || key.includes(label) || label.includes(key)));
+}
+async function tpSincronizzaStatoCantieriDaSupporto(){
+  if(!db || !Array.isArray(cache.cantieri) || !cache.cantieri.length) return;
+  try{
+    const rec = await q(db.from('supporto_cantieri_state').select('stato').eq('id','tecnoplafon_main').maybeSingle());
+    const stato = rec?.stato && typeof rec.stato === 'object' ? rec.stato : {};
+    const terminati = stato.cantieriTerminati && typeof stato.cantieriTerminati === 'object' ? stato.cantieriTerminati : {};
+    const terminatiKeys = Object.keys(terminati)
+      .filter(k => !!terminati[k])
+      .map(tpSupportoCantiereKey)
+      .filter(Boolean);
+
+    if(!terminatiKeys.length) return;
+
+    const daTerminare = cache.cantieri
+      .filter(c => String(c.stato || 'attivo') === 'attivo')
+      .filter(c => tpSupportoCantiereTerminatoPerTabella(c, terminatiKeys))
+      .map(c => c.id)
+      .filter(Boolean);
+
+    if(!daTerminare.length) return;
+
+    await q(db.from('cantieri').update({
+      stato:'terminato',
+      updated_at:new Date().toISOString()
+    }).in('id', daTerminare));
+
+    cache.cantieri = await q(db.from('cantieri').select('*').order('id'));
+  }catch(e){
+    console.warn('Sincronizzazione stato cantieri da Supporto Cantieri non riuscita:', e);
+  }
+}
+window.tpSincronizzaStatoCantieriDaSupporto = tpSincronizzaStatoCantieriDaSupporto;
 async function tpSincronizzaSupportoCantieriDaGestionale(){
   if(!db) return;
   try{
