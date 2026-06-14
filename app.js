@@ -3833,10 +3833,77 @@ async function stampaRegieFirma(){
 window.stampaRegieFirma=stampaRegieFirma;
 
 
+
+// Layout pulito Tecnoplafon: solo grafica, non modifica salvataggi o funzioni.
+function installTecnoplafonLayoutPulito(){
+  if(document.getElementById('tpLayoutPulitoStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'tpLayoutPulitoStyle';
+  style.textContent = `
+    :root{--tp-blue:#082b63;--tp-soft:#f5f8fc;--tp-border:#d6e2f0;--tp-shadow:0 10px 26px rgba(8,43,99,.08);}
+    body{background:linear-gradient(180deg,#f7faff 0%,#eef4fb 100%);}
+    .tp-logo-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 18px 0;padding:16px 18px;border:1px solid var(--tp-border);border-radius:22px;background:#fff;box-shadow:var(--tp-shadow);}
+    .tp-logo-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
+    .tp-logo-header img{display:block;width:min(260px,62vw);height:auto;max-height:72px;object-fit:contain;}
+    .tp-logo-header-text{min-width:0;}
+    .tp-logo-header-title{font-size:22px;line-height:1.05;font-weight:900;color:var(--tp-blue);letter-spacing:-.02em;}
+    .tp-logo-header-sub{font-size:14px;color:#64748b;font-weight:700;margin-top:4px;}
+    .tp-page-intro{display:inline-flex;align-items:center;gap:8px;background:#eef6ff;border:1px solid #d6e8ff;color:var(--tp-blue);font-weight:900;border-radius:999px;padding:9px 13px;white-space:nowrap;}
+    #adminBox,#appBox{max-width:1380px;margin-left:auto;margin-right:auto;}
+    .card{border-color:var(--tp-border);box-shadow:0 8px 22px rgba(8,43,99,.06);}
+    .tabs{gap:8px;align-items:center;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;}
+    .tabs button{white-space:nowrap;border-radius:14px;}
+    #tab-materiale .card,#adminMaterialeBox{scroll-margin-top:14px;}
+    .materiale-mobile-toolbar{position:relative;}
+    .tp-admin-bollettino-upload,.tp-bollettini-admin,.materiale-mobile-list .materiale-card{scroll-margin-top:16px;}
+    @media(max-width:760px){
+      .tp-logo-header{align-items:flex-start;flex-direction:column;margin:0 0 14px 0;padding:14px;border-radius:20px;}
+      .tp-logo-header-left{width:100%;}
+      .tp-logo-header img{width:min(230px,72vw);max-height:62px;}
+      .tp-logo-header-title{font-size:19px;}
+      .tp-logo-header-sub{font-size:13px;}
+      .tp-page-intro{width:100%;justify-content:center;white-space:normal;text-align:center;}
+      .card{border-radius:18px;padding:16px;}
+      .tabs{position:sticky;top:0;z-index:20;background:rgba(247,250,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--tp-border);margin:0 -10px 14px;padding:8px 10px;}
+      .tabs button{min-height:44px;padding:10px 14px;font-size:15px;}
+      h1{font-size:28px;line-height:1.08;}
+      h2{font-size:24px;line-height:1.12;}
+      h3{font-size:20px;line-height:1.15;}
+      button,input,select,textarea{font-size:16px;}
+      .row{gap:9px;}
+      .row button{min-height:46px;}
+      .materiale-card-actions{grid-template-columns:1fr!important;}
+      .materiale-card-actions button{min-height:46px;}
+    }
+  `;
+  document.head.appendChild(style);
+}
+function installTecnoplafonLogoHeader(){
+  installTecnoplafonLayoutPulito();
+  const target = $('adminBox') || $('appBox') || $('adminLoginBox') || $('loginBox') || document.body;
+  if(!target || target.querySelector('.tp-logo-header')) return;
+  const isAdmin = document.body?.dataset?.page === 'admin';
+  const header = document.createElement('div');
+  header.className = 'tp-logo-header';
+  header.innerHTML = `
+    <div class="tp-logo-header-left">
+      <img src="https://tecnoplafon.ch/wp-content/uploads/2019/08/TECNOPLAFON-logo_v01.png" alt="Tecnoplafon SA">
+      <div class="tp-logo-header-text">
+        <div class="tp-logo-header-title">Gestionale Tecnoplafon</div>
+        <div class="tp-logo-header-sub">${isAdmin ? 'Admin · PC e iPhone' : 'Collaboratore · iPhone'}</div>
+      </div>
+    </div>
+    <div class="tp-page-intro">${isAdmin ? 'Materiale e bollettini sempre ordinati' : 'Ore, materiale e richieste in pochi tocchi'}</div>`;
+  target.insertAdjacentElement('afterbegin', header);
+}
+window.installTecnoplafonLayoutPulito = installTecnoplafonLayoutPulito;
+window.installTecnoplafonLogoHeader = installTecnoplafonLogoHeader;
+
 document.addEventListener('DOMContentLoaded', async()=>{
   initDb();
   const page=document.body.dataset.page;
   installOreAutoNormalize();
   if(page==='worker') await initWorker();
   if(page==='admin') await initAdmin();
+  installTecnoplafonLogoHeader();
 });
