@@ -861,12 +861,23 @@ function installMaterialeMobileCardsStyle(){
     .tp-bollettini-list{padding:0 12px 12px 12px;}
     .tp-bollettini-list[hidden]{display:none!important;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
-    body[data-page="worker"] #materialeBox{overflow:visible;}
-    body[data-page="worker"] #materialeBox .row{display:flex;flex-direction:column;gap:12px;align-items:stretch;}
-    body[data-page="worker"] #materialeBox .row button{width:100%;min-height:58px;border-radius:16px;font-size:17px;font-weight:900;white-space:normal;line-height:1.2;padding:14px 16px;}
-    body[data-page="worker"] #materialeBox input[type="file"],
-    body[data-page="worker"] #materialeBox textarea,
-    body[data-page="worker"] #materialeBox select{max-width:100%;box-sizing:border-box;}
+    /* Mobile collaboratore: richiesta materiale e bollettini sempre dentro lo schermo. */
+    #materialeBox,
+    #materialeBox *{box-sizing:border-box;}
+    #materialeBox{max-width:100%;overflow:hidden;}
+    #materialeBox .row,
+    #materialeBox .tp-bollettino-box .row{display:flex!important;flex-direction:column!important;gap:14px!important;align-items:stretch!important;width:100%;max-width:100%;}
+    #materialeBox button,
+    #materialeBox .row button,
+    #materialeBox .tp-bollettino-box button{display:block;width:100%!important;max-width:100%!important;min-width:0!important;min-height:64px;border-radius:18px;font-size:18px;font-weight:900;white-space:normal;line-height:1.2;padding:16px 14px;margin-left:0!important;margin-right:0!important;}
+    #materialeBox input,
+    #materialeBox input[type="file"],
+    #materialeBox textarea,
+    #materialeBox select,
+    #materialeBox .choice-buttons,
+    #materialeBox .choice-search,
+    #materialeBox .choice-search-row{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box;}
+    #materialeBox input[type="file"]{font-size:16px;padding:12px;min-height:54px;overflow:hidden;}
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
       .materiale-mobile-summary{grid-template-columns:1fr 1fr 1fr;}
