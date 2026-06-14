@@ -70,7 +70,7 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
 
-  const url = event.notification.data?.url || './admin.html';
+  const url = event.notification.data && event.notification.data.url ? event.notification.data.url : './admin.html';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
