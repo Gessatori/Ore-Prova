@@ -1841,22 +1841,86 @@ async function setRichiesta(id, stato){
 }
 window.setRichiesta=setRichiesta;
 
+function installAnagraficheToggleStyle(){
+  if(document.getElementById('tp-anagrafiche-toggle-style')) return;
+  const style = document.createElement('style');
+  style.id = 'tp-anagrafiche-toggle-style';
+  style.textContent = `
+    .tp-anag-toggle-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin:10px 0 12px;
+    }
+    .tp-anag-toggle-row button{
+      min-height:42px;
+      padding:10px 14px;
+      border-radius:12px;
+    }
+    .tp-anag-count{
+      color:#6b7280;
+      font-size:.95rem;
+    }
+    .tp-anag-hidden-box{
+      border:1px dashed #cbd5e1;
+      border-radius:12px;
+      padding:12px;
+      background:#f8fafc;
+      color:#64748b;
+      margin-bottom:12px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function toggleAnagrafiche(tipo){
+  window.tpAnagraficheVisibili = window.tpAnagraficheVisibili || { collaboratori:false, cantieri:false };
+  window.tpAnagraficheVisibili[tipo] = !window.tpAnagraficheVisibili[tipo];
+  renderAnagrafiche();
+}
+window.toggleAnagrafiche = toggleAnagrafiche;
+
 function renderAnagrafiche(){
+  installAnagraficheToggleStyle();
+  window.tpAnagraficheVisibili = window.tpAnagraficheVisibili || { collaboratori:false, cantieri:false };
+
   const statoBadge = stato => {
     const s = String(stato || 'attivo');
     const cls = s === 'attivo' ? 'green' : 'red';
     return `<span class="badge ${cls}">${escapeHtml(s)}</span>`;
   };
 
-  $('collabTable').innerHTML=`<table><tr><th>Collaboratore</th><th>Password</th><th>Stato</th><th>Azioni</th></tr>${cache.collab.map(c=>{
+  const collaboratoriVisibili = !!window.tpAnagraficheVisibili.collaboratori;
+  const cantieriVisibili = !!window.tpAnagraficheVisibili.cantieri;
+  const collabAttivi = (cache.collab || []).filter(c => c.stato === 'attivo').length;
+  const cantieriAttivi = (cache.cantieri || []).filter(c => c.stato === 'attivo').length;
+
+  const collabTableHtml = `<table><tr><th>Collaboratore</th><th>Password</th><th>Stato</th><th>Azioni</th></tr>${cache.collab.map(c=>{
     const attivo = c.stato === 'attivo';
     return `<tr><td>${escapeHtml(c.cognome)} ${escapeHtml(c.nome)}</td><td>${escapeHtml(c.password_accesso||'')}</td><td>${statoBadge(c.stato)}</td><td><button class="${attivo ? 'secondary' : ''}" onclick="setCollaboratoreStato('${c.id}','${attivo ? 'terminato' : 'attivo'}')">${attivo ? 'Disattiva' : 'Attiva'}</button></td></tr>`;
   }).join('')}</table>`;
 
-  $('cantieriTable').innerHTML=`<table><tr><th>ID</th><th>Cantiere</th><th>Località</th><th>Km</th><th>Stato</th><th>Azioni</th></tr>${cache.cantieri.map(c=>{
+  $('collabTable').innerHTML = `
+    <div class="tp-anag-toggle-row">
+      <button type="button" onclick="toggleAnagrafiche('collaboratori')">${collaboratoriVisibili ? 'Nascondi collaboratori' : 'Mostra collaboratori'}</button>
+      <span class="tp-anag-count">${collabAttivi} attivi / ${(cache.collab||[]).length} totali</span>
+    </div>
+    ${collaboratoriVisibili ? collabTableHtml : '<div class="tp-anag-hidden-box">Elenco collaboratori nascosto. Premi “Mostra collaboratori” per aprirlo.</div>'}
+  `;
+
+  const cantieriTableHtml = `<table><tr><th>ID</th><th>Cantiere</th><th>Località</th><th>Km</th><th>Stato</th><th>Azioni</th></tr>${cache.cantieri.map(c=>{
     const attivo = c.stato === 'attivo';
     return `<tr><td>${c.codice}</td><td>${escapeHtml(c.nome)}</td><td>${escapeHtml(c.localita||'')}</td><td>${fmt(c.km)}</td><td>${statoBadge(c.stato)}</td><td><button class="${attivo ? 'secondary' : ''}" onclick="setCantiereStato('${c.id}','${attivo ? 'terminato' : 'attivo'}')">${attivo ? 'Disattiva' : 'Attiva'}</button></td></tr>`;
   }).join('')}</table>`;
+
+  $('cantieriTable').innerHTML = `
+    <div class="tp-anag-toggle-row">
+      <button type="button" onclick="toggleAnagrafiche('cantieri')">${cantieriVisibili ? 'Nascondi cantieri' : 'Mostra cantieri'}</button>
+      <span class="tp-anag-count">${cantieriAttivi} attivi / ${(cache.cantieri||[]).length} totali</span>
+    </div>
+    ${cantieriVisibili ? cantieriTableHtml : '<div class="tp-anag-hidden-box">Elenco cantieri nascosto. Premi “Mostra cantieri” per aprirlo.</div>'}
+  `;
 }
 
 async function setCollaboratoreStato(id, stato){
