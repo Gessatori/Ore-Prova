@@ -706,6 +706,7 @@
         var tables = container.querySelectorAll('table');
         for(var ti=0; ti<tables.length; ti++){
           var table = tables[ti];
+          if(table.closest && table.closest('.regie-totals-block')) continue;
           var rows = Array.prototype.slice.call(table.querySelectorAll('tr'));
           if(rows.length < 2) continue;
           var headers = rows[0].children;
