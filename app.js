@@ -500,17 +500,17 @@ function enhanceSingleSelectButtons(selectId){
   const options = Array.from(sel.options || []);
   const realOptions = options.filter(o => String(o.value || '') !== '');
   const searchId = selectId + 'ChoiceSearch';
-  const oldSearch = $(searchId);
-  const searchText = oldSearch ? oldSearch.value : '';
 
   if(!realOptions.length){
-    box.innerHTML = `<div class="choice-empty">${selectId==='oreSotto' ? 'Prima scegli la lavorazione.' : 'Nessuna scelta disponibile.'}</div>`;
+    box.innerHTML = `<input class="choice-search" type="text" value="" placeholder="${selectId==='oreSotto' ? 'Prima scegli la lavorazione' : 'Nessuna scelta disponibile'}" readonly>`;
     return;
   }
 
   const current = String(sel.value || '');
   const selectedOption = realOptions.find(o => String(o.value) === current);
   const selectedText = selectedOption ? tpShortChoiceText(selectedOption.textContent) : '';
+  const isOpen = box.dataset.open === '1';
+  const searchText = isOpen ? (box.dataset.search || '') : '';
   const q = tpNormText(searchText);
   const words = q.split(' ').filter(Boolean);
 
@@ -532,27 +532,52 @@ function enhanceSingleSelectButtons(selectId){
     ? realOptions.map(o => ({option:o, score:scoreOption(o)})).filter(x => x.score > 0).sort((a,b)=>b.score-a.score).map(x=>x.option)
     : realOptions;
 
-  const helperHtml = selectedOption
-    ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(selectedText)}</b></div>`
-    : '<div class="choice-selected muted">Scorri la lista e tocca il nome corretto. Puoi anche scrivere per filtrare.</div>';
+  const closedValue = selectedText || '';
+  const placeholder = TP_WORKER_SELECT_LABELS[selectId] || 'Scegli...';
+
+  if(!isOpen){
+    box.innerHTML = `
+      <div class="choice-search-row">
+        <input id="${searchId}" class="choice-search" type="text" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(closedValue)}" autocomplete="off" readonly>
+      </div>
+      ${selectedOption ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(selectedText)}</b></div>` : '<div class="choice-selected muted">Tocca il campo per scegliere o cercare.</div>'}`;
+
+    const closedInput = $(searchId);
+    if(closedInput){
+      closedInput.onclick = () => {
+        box.dataset.open = '1';
+        box.dataset.search = '';
+        enhanceSingleSelectButtons(selectId);
+        setTimeout(()=>{ const fresh = $(searchId); if(fresh){ fresh.focus(); } }, 0);
+      };
+      closedInput.onfocus = closedInput.onclick;
+    }
+    return;
+  }
 
   const listLabel = q
     ? `Risultati trovati: ${filteredOptions.length}`
     : `Lista completa: ${realOptions.length}`;
 
   const suggestionHtml = filteredOptions.length
-    ? `<div class="choice-list-label">${escapeHtml(listLabel)}</div><div class="choice-suggestions choice-dropdown choice-always-open">${filteredOptions.map(o => `
+    ? `<div class="choice-list-label">${escapeHtml(listLabel)}</div><div class="choice-suggestions choice-dropdown">${filteredOptions.map(o => `
         <button type="button" class="choice-suggestion ${String(o.value) === current ? 'active' : ''}" data-value="${escapeHtml(o.value)}">
           <span class="choice-suggestion-main">${escapeHtml(tpShortChoiceText(o.textContent))}</span>
         </button>`).join('')}</div>`
     : '<div class="choice-no-results">Nessun risultato trovato. Cancella la ricerca per vedere tutta la lista.</div>';
 
-  const searchHtml = `
+  box.innerHTML = `
     <div class="choice-search-row">
       <input id="${searchId}" class="choice-search" type="search" placeholder="Cerca o scorri la lista sotto..." value="${escapeHtml(searchText)}" autocomplete="off">
-    </div>`;
+    </div>
+    ${suggestionHtml}
+    ${selectedOption ? `<div class="choice-selected">Selezionato: <b>${escapeHtml(selectedText)}</b></div>` : '<div class="choice-selected muted">Scorri la lista e tocca il nome corretto. Puoi anche scrivere per filtrare.</div>'}`;
 
-  box.innerHTML = `${searchHtml}${suggestionHtml}${helperHtml}`;
+  const closeList = () => {
+    box.dataset.open = '0';
+    box.dataset.search = '';
+    enhanceSingleSelectButtons(selectId);
+  };
 
   const chooseValue = (value, labelText) => {
     if(!value) return;
@@ -560,19 +585,19 @@ function enhanceSingleSelectButtons(selectId){
     const chosenText = tpShortChoiceText(labelText || chosen?.textContent || '');
     sel.value = String(value);
     sel.dispatchEvent(new Event('change', {bubbles:true}));
+    box.dataset.open = '0';
+    box.dataset.search = '';
     enhanceSingleSelectButtons(selectId);
-    const freshSearch = $(searchId);
-    if(freshSearch && chosenText){
-      freshSearch.value = chosenText;
-      freshSearch.blur();
-    }
     if(selectId === 'oreLav') setTimeout(()=>enhanceSingleSelectButtons('oreSotto'), 0);
   };
 
   const search = $(searchId);
   if(search){
+    search.focus();
     search.oninput = () => {
       const pos = search.selectionStart || search.value.length;
+      box.dataset.search = search.value;
+      box.dataset.open = '1';
       enhanceSingleSelectButtons(selectId);
       const fresh = $(searchId);
       if(fresh){ fresh.focus(); fresh.setSelectionRange(pos, pos); }
@@ -585,8 +610,7 @@ function enhanceSingleSelectButtons(selectId){
       }
       if(ev.key === 'Escape'){
         ev.preventDefault();
-        search.value = '';
-        enhanceSingleSelectButtons(selectId);
+        closeList();
       }
     };
   }
@@ -595,8 +619,8 @@ function enhanceSingleSelectButtons(selectId){
     btn.onmousedown = ev => ev.preventDefault();
     btn.onclick = () => chooseValue(btn.dataset.value, btn.querySelector('.choice-suggestion-main')?.textContent || '');
   });
-
 }
+
 function enhanceWorkerChoices(){
   ['oreCantiere','oreLav','oreSotto','reqTipo','matCantiere','myMese'].forEach(enhanceSingleSelectButtons);
 }
@@ -927,18 +951,40 @@ window.salvaOreOggi=salvaOreOggi;
 
 async function salvaRichiesta(){
   try{
-    const row={collaboratore_id:session.user.id,tipo:$('reqTipo').value,data_inizio:$('reqDa').value,data_fine:$('reqA').value,giornata_intera:$('reqGiornata').checked,ore_richieste:$('reqGiornata').checked?null:oreToDecimal($('reqOre').value||0),note:$('reqNote').value,stato:'in_attesa'};
+    const collaboratoreNome = String(session?.user?.nome || '').trim();
+    const collaboratoreCognome = String(session?.user?.cognome || '').trim();
+    const collaboratoreCompleto = `${collaboratoreCognome} ${collaboratoreNome}`.trim() || 'Collaboratore';
+    const noteRichiesta = ($('reqNote')?.value || '').trim();
+    const row={
+      collaboratore_id:session.user.id,
+      tipo:$('reqTipo').value,
+      data_inizio:$('reqDa').value,
+      data_fine:$('reqA').value,
+      giornata_intera:$('reqGiornata').checked,
+      ore_richieste:$('reqGiornata').checked?null:oreToDecimal($('reqOre').value||0),
+      note:noteRichiesta,
+      stato:'in_attesa'
+    };
     const saved = await q(db.from('richieste_congedo').insert(row).select('id').single());
-    const mail = await inviaNotificaEmailAdmin('vacanza_congedo', {
+    const dettagliMail = {
       numero: saved?.id,
-      collaboratore: `${session?.user?.cognome || ''} ${session?.user?.nome || ''}`.trim(),
+      nome: collaboratoreNome,
+      cognome: collaboratoreCognome,
+      collaboratore: collaboratoreCompleto,
       tipo: testoTipoRichiesta(row.tipo),
       data_inizio: row.data_inizio,
       data_fine: row.data_fine,
       ore: row.giornata_intera ? 'Giornata intera' : `${fmtOre(row.ore_richieste)} ore`,
-      descrizione: row.note || '-'
-    });
-    msg($('reqMsg'), mail.ok ? 'Richiesta salvata. Email automatica inviata all admin.' : 'Richiesta salvata nel gestionale. Email automatica non configurata o non inviata.');
+      note: noteRichiesta || '-',
+      descrizione: noteRichiesta || '-'
+    };
+    const mail = await inviaNotificaEmailAdmin('vacanza_congedo', dettagliMail);
+    if(mail.ok){
+      msg($('reqMsg'), 'Richiesta salvata. Email inviata all admin con nome, cognome e note.');
+    } else {
+      msg($('reqMsg'), 'Richiesta salvata. Apro una email gia compilata: premi Invia per mandarla all admin.');
+      apriEmailRichiestaCollaboratore(row);
+    }
     await caricaRichiesteWorker();
   }catch(e){ msg($('reqMsg'), e.message, 'error'); }
 }
