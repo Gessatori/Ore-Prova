@@ -735,13 +735,13 @@ async function caricaMaterialeAdmin(){
     </div>`;
 
     if(!rows.length){
-      box.innerHTML = `${toolbar}${bollettiniHtml}<p class="muted">Nessuna richiesta materiale da ordinare.</p>`;
+      box.innerHTML = `${toolbar}<p class="muted">Nessuna richiesta materiale da ordinare.</p>${bollettiniHtml}`;
       msg($('adminMaterialeMsg'), 'Materiale caricato.');
       await aggiornaBadgeMaterialeAdmin();
       return;
     }
 
-    box.innerHTML = `${toolbar}${bollettiniHtml}
+    box.innerHTML = `${toolbar}
       <div class="materiale-mobile-summary">
         <span><b>${aperte.length}</b> da evadere</span>
         <span><b>${evase.length}</b> evase</span>
@@ -773,7 +773,8 @@ async function caricaMaterialeAdmin(){
             </div>
           </article>`;
         }).join('')}
-      </div>`;
+      </div>
+      ${bollettiniHtml}`;
 
     msg($('adminMaterialeMsg'), 'Richieste materiale caricate.');
     await aggiornaBadgeMaterialeAdmin();
