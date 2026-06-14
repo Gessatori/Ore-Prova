@@ -419,14 +419,53 @@ async function caricaMaterialeAdmin(){
   try{
     const rows = await q(db.from('richieste_materiale').select('*,collaboratori(nome,cognome),cantieri(codice,nome)').order('created_at',{ascending:false}).limit(200));
     const evase = rows.filter(r => r.stato === 'evasa');
-    const toolbar = rows.length ? `<div class="row" style="margin-bottom:10px">
+    const aperte = rows.filter(r => r.stato === 'in_attesa');
+    const toolbar = `<div class="materiale-mobile-toolbar">
       <button type="button" class="secondary" onclick="caricaMaterialeAdmin()">Aggiorna</button>
-      <button type="button" class="ghost" onclick="eliminaMaterialeEseguito()" ${evase.length ? '' : 'disabled'}>Cancella materiale eseguito (${evase.length})</button>
-    </div>` : '';
-    box.innerHTML = rows.length ? `${toolbar}<table><tr><th>Data</th><th>Collaboratore</th><th>Cantiere</th><th>Materiale / descrizione</th><th>Stato</th><th>Azioni</th></tr>${rows.map(r=>{
-      const canDelete = r.stato === 'evasa' || r.stato === 'annullata';
-      return `<tr><td>${String(r.created_at||'').slice(0,16).replace('T',' ')}</td><td>${escapeHtml(`${r.collaboratori?.cognome||''} ${r.collaboratori?.nome||''}`.trim())}</td><td>${escapeHtml(`${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-')}</td><td>${escapeHtml(r.materiale||'')}</td><td>${badgeStatoMateriale(r.stato)}</td><td><button onclick="setRichiestaMateriale('${r.id}','evasa')">Evasa</button> <button class="secondary" onclick="setRichiestaMateriale('${r.id}','in_attesa')">In attesa</button> <button class="ghost" onclick="setRichiestaMateriale('${r.id}','annullata')">Annulla</button>${canDelete ? ` <button class="ghost" onclick="eliminaRichiestaMateriale('${r.id}')">Cancella</button>` : ''}</td></tr>`;
-    }).join('')}</table>` : '<p class="muted">Nessuna richiesta materiale.</p>';
+      <button type="button" class="ghost" onclick="eliminaMaterialeEseguito()" ${evase.length ? '' : 'disabled'}>Cancella evase (${evase.length})</button>
+    </div>`;
+
+    if(!rows.length){
+      box.innerHTML = `${toolbar}<p class="muted">Nessuna richiesta materiale.</p>`;
+      msg($('adminMaterialeMsg'), 'Nessuna richiesta materiale.');
+      await aggiornaBadgeMaterialeAdmin();
+      return;
+    }
+
+    box.innerHTML = `${toolbar}
+      <div class="materiale-mobile-summary">
+        <span><b>${aperte.length}</b> da evadere</span>
+        <span><b>${evase.length}</b> evase</span>
+        <span><b>${rows.length}</b> totali</span>
+      </div>
+      <div class="materiale-mobile-list">
+        ${rows.map(r=>{
+          const canDelete = r.stato === 'evasa' || r.stato === 'annullata';
+          const collaboratore = `${r.collaboratori?.cognome||''} ${r.collaboratori?.nome||''}`.trim() || '-';
+          const cantiere = `${r.cantieri?.codice||''} ${r.cantieri?.nome||''}`.trim() || '-';
+          const data = String(r.created_at||'').slice(0,16).replace('T',' ') || '-';
+          const materiale = r.materiale || '-';
+          const stato = r.stato || 'in_attesa';
+          const aperta = stato === 'in_attesa';
+          return `<article class="materiale-card ${aperta ? 'materiale-card-open' : ''}">
+            <div class="materiale-card-head">
+              <div>
+                <div class="materiale-card-title">${escapeHtml(collaboratore)}</div>
+                <div class="materiale-card-date">${escapeHtml(data)}</div>
+              </div>
+              <div>${badgeStatoMateriale(stato)}</div>
+            </div>
+            <div class="materiale-card-row"><span>Cantiere</span><b>${escapeHtml(cantiere)}</b></div>
+            <div class="materiale-card-row materiale-card-text"><span>Materiale</span><b>${escapeHtml(materiale)}</b></div>
+            <div class="materiale-card-actions">
+              ${aperta ? `<button onclick="setRichiestaMateriale('${r.id}','evasa')">Evadi</button>` : `<button class="secondary" onclick="setRichiestaMateriale('${r.id}','in_attesa')">Riapri</button>`}
+              <button class="ghost" onclick="setRichiestaMateriale('${r.id}','annullata')">Annulla</button>
+              ${canDelete ? `<button class="ghost" onclick="eliminaRichiestaMateriale('${r.id}')">Cancella</button>` : ''}
+            </div>
+          </article>`;
+        }).join('')}
+      </div>`;
+
     msg($('adminMaterialeMsg'), 'Richieste materiale caricate.');
     await aggiornaBadgeMaterialeAdmin();
   }catch(e){
@@ -469,6 +508,47 @@ window.caricaMaterialeAdmin = caricaMaterialeAdmin;
 window.setRichiestaMateriale = setRichiestaMateriale;
 window.eliminaRichiestaMateriale = eliminaRichiestaMateriale;
 window.eliminaMaterialeEseguito = eliminaMaterialeEseguito;
+
+function installMaterialeMobileCardsStyle(){
+  if(document.getElementById('tpMaterialeMobileCardsStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'tpMaterialeMobileCardsStyle';
+  style.textContent = `
+    .materiale-mobile-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px 0;align-items:center;}
+    .materiale-mobile-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px 0;}
+    .materiale-mobile-summary span{border:1px solid #d6e2f0;border-radius:14px;background:#f8fbff;padding:10px;text-align:center;font-weight:800;color:#0b2f69;}
+    .materiale-mobile-summary b{display:block;font-size:22px;line-height:1.1;}
+    .materiale-mobile-list{display:grid;gap:12px;}
+    .materiale-card{border:1px solid #d6e2f0;border-radius:18px;background:#fff;padding:14px;box-shadow:0 8px 18px rgba(8,43,99,.06);}
+    .materiale-card-open{border-color:#9fc7ff;background:#fbfdff;}
+    .materiale-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px;}
+    .materiale-card-title{font-size:18px;font-weight:900;color:#082b63;line-height:1.2;}
+    .materiale-card-date{font-size:13px;color:#64748b;margin-top:3px;}
+    .materiale-card-row{display:grid;grid-template-columns:95px 1fr;gap:8px;padding:8px 0;border-top:1px solid #eef3f9;align-items:start;}
+    .materiale-card-row span{font-size:13px;color:#64748b;font-weight:800;}
+    .materiale-card-row b{font-size:16px;color:#082b63;line-height:1.25;white-space:normal;overflow-wrap:anywhere;}
+    .materiale-card-text b{font-size:18px;}
+    .materiale-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #eef3f9;}
+    .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
+    @media(max-width:700px){
+      .materiale-mobile-toolbar button{flex:1 1 auto;}
+      .materiale-mobile-summary{grid-template-columns:1fr 1fr 1fr;}
+      .materiale-mobile-summary span{font-size:13px;padding:9px 5px;}
+      .materiale-mobile-summary b{font-size:19px;}
+      .materiale-card{padding:13px;border-radius:18px;}
+      .materiale-card-title{font-size:17px;}
+      .materiale-card-row{grid-template-columns:1fr;gap:3px;}
+      .materiale-card-row b{font-size:16px;}
+      .materiale-card-text b{font-size:18px;}
+      .materiale-card-actions{display:grid;grid-template-columns:1fr 1fr;}
+      .materiale-card-actions button{width:100%;}
+    }
+  `;
+  document.head.appendChild(style);
+}
+installMaterialeMobileCardsStyle();
+window.installMaterialeMobileCardsStyle = installMaterialeMobileCardsStyle;
+
 
 
 
