@@ -861,13 +861,31 @@ async function loginCollaboratore(){
 }
 async function loginAdmin(){
   if(!requireDb()) return;
-  const pass=$('adminPass').value.trim();
+
+  const pass = $('adminPass').value.trim();
+
   try{
-    const data=await q(db.from('admin_utenti').select('*').eq('password_accesso',pass).eq('attivo',true).maybeSingle());
-    if(!data){ msg($('adminLoginMsg'),'Password admin non valida.','error'); return; }
-    localStorage.setItem('tp_session', JSON.stringify({role:'admin', user:data}));
-    location.href='admin.html';
-  }catch(e){ msg($('adminLoginMsg'), 'Errore login: '+e.message, 'error'); }
+    const { data, error } = await db.functions.invoke('login-tecnoplafon', {
+      body: { password: pass }
+    });
+
+    if(error) throw error;
+
+    if(!data || !data.ok){
+      msg($('adminLoginMsg'), data?.message || 'Password admin non valida.', 'error');
+      return;
+    }
+
+    localStorage.setItem('tp_session', JSON.stringify({
+      role: 'admin',
+      user: data.user
+    }));
+
+    location.href = 'admin.html';
+
+  }catch(e){
+    msg($('adminLoginMsg'), 'Errore login: ' + (e.message || e), 'error');
+  }
 }
 window.loginCollaboratore=loginCollaboratore; window.loginAdmin=loginAdmin; window.oreToDecimal=oreToDecimal; window.fmtOre=fmtOre;
 
