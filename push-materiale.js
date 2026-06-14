@@ -1,11 +1,17 @@
-// Notifiche push materiale - pagina admin
-// Mostra un pulsante per registrare il telefono e salva la subscription in Supabase.
+// Notifiche push materiale - SOLO pagina admin, dentro sezione Richieste materiale
+// Mostra il pulsante per registrare il telefono e salva la subscription in Supabase.
 (function(){
   const VAPID_PUBLIC_KEY = 'BKN5tlq0RodUoBLk25we96hg9OeGgS3f_DGr7EbIMOo81oXR3tWBM6ViS94pln709jdxxCxOwvrRGFGx5jKMs5M';
 
   function ready(fn){
     if(document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(fn, 0);
     else document.addEventListener('DOMContentLoaded', fn);
+  }
+
+  function esc(s){
+    return String(s || '').replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];
+    });
   }
 
   function b64ToUint8Array(base64String){
@@ -31,32 +37,41 @@
   function showStatus(text, type){
     const el = document.getElementById('pushMaterialeMsg');
     if(!el) return;
-    el.innerHTML = '<div class="' + (type || 'success') + '">' + String(text).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]; }) + '</div>';
+    el.innerHTML = '<div class="' + (type || 'success') + '">' + esc(text) + '</div>';
   }
 
   function installButton(){
+    // Solo admin.html
     if(!document.body || document.body.dataset.page !== 'admin') return;
     if(document.getElementById('pushMaterialeBox')) return;
+
+    const tabMateriale = document.getElementById('tab-materiale');
+    if(!tabMateriale) return;
 
     const box = document.createElement('div');
     box.id = 'pushMaterialeBox';
     box.className = 'card';
-    box.style.margin = '12px 0';
-    box.innerHTML = '<h2>Notifiche materiale telefono</h2><p class="muted">Attiva questo pulsante sul telefono dove vuoi ricevere gli avvisi quando arriva una richiesta materiale.</p><button type="button" id="btnPushMateriale">Attiva notifiche materiale</button><div id="pushMaterialeMsg"></div>';
+    box.style.margin = '0 0 12px 0';
+    box.innerHTML = '<h2>Notifiche materiale telefono</h2>' +
+      '<p class="muted">Da usare solo sul telefono admin dove vuoi ricevere gli avvisi materiale.</p>' +
+      '<button type="button" id="btnPushMateriale">Attiva notifiche materiale</button>' +
+      '<div id="pushMaterialeMsg"></div>';
 
-    const adminBox = document.getElementById('adminBox');
-    const tabs = document.querySelector('.tabs');
-    if(tabs) tabs.insertAdjacentElement('afterend', box);
-    else if(adminBox) adminBox.insertAdjacentElement('afterbegin', box);
-    else document.body.appendChild(box);
+    // Il pulsante viene inserito dentro la scheda Richieste materiale, non sopra tutte le sezioni.
+    tabMateriale.insertAdjacentElement('afterbegin', box);
 
-    document.getElementById('btnPushMateriale').onclick = attivaNotificheMateriale;
+    const btn = document.getElementById('btnPushMateriale');
+    if(btn) btn.onclick = attivaNotificheMateriale;
   }
 
   async function attivaNotificheMateriale(){
     try{
+      if(location.protocol !== 'https:' && location.protocol !== 'http:'){
+        throw new Error('Apri il gestionale dal sito online, non dal file scaricato. Usa https://gessatori.github.io/Ore-Prova/admin.html');
+      }
       if(!('serviceWorker' in navigator)) throw new Error('Questo telefono/browser non supporta Service Worker.');
       if(!('PushManager' in window)) throw new Error('Questo telefono/browser non supporta le notifiche push web.');
+      if(!('Notification' in window)) throw new Error('Questo telefono/browser non supporta le notifiche.');
 
       const permission = await Notification.requestPermission();
       if(permission !== 'granted') throw new Error('Permesso notifiche non concesso. Controlla Impostazioni del telefono.');
@@ -98,7 +113,10 @@
     try{
       const dbx = getDb();
       if(!dbx) return;
-      const { count, error } = await dbx.from('richieste_materiale').select('id', { count:'exact', head:true }).in('stato', ['in_attesa','vista']);
+      const { count, error } = await dbx
+        .from('richieste_materiale')
+        .select('id', { count:'exact', head:true })
+        .in('stato', ['in_attesa','vista']);
       if(error) throw error;
       const n = Number(count || 0);
       if(navigator.setAppBadge){
@@ -126,6 +144,7 @@
 
   window.attivaNotificheMateriale = attivaNotificheMateriale;
   window.aggiornaNumeroIconaMateriale = aggiornaNumeroIconaMateriale;
+
   ready(function(){
     installButton();
     aggiornaNumeroIconaMateriale();
@@ -134,6 +153,10 @@
       aggiornaNumeroIconaMateriale();
       if(rendiVisteSempreVisibili()) clearInterval(timer);
     }, 1500);
-    setTimeout(function(){ clearInterval(timer); rendiVisteSempreVisibili(); aggiornaNumeroIconaMateriale(); }, 8000);
+    setTimeout(function(){
+      clearInterval(timer);
+      rendiVisteSempreVisibili();
+      aggiornaNumeroIconaMateriale();
+    }, 8000);
   });
 })();
