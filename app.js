@@ -396,6 +396,52 @@ async function salvaRichiestaMaterialeWorker(){
     msg($('matMsg'), e.message + ' - Se manca la tabella, esegui setup_richieste_materiale.sql in Supabase.', 'error');
   }
 }
+
+// Compressione foto bollettini: riduce automaticamente le immagini prima di caricarle su Supabase.
+async function tpComprimiFotoBollettino(file){
+  if(!file || !String(file.type || '').startsWith('image/')) return file;
+
+  const maxWidth = 1200;
+  const maxHeight = 1200;
+  const quality = 0.65;
+
+  const dataUrl = await new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Impossibile leggere la foto.'));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise((resolve, reject)=>{
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Impossibile preparare la foto.'));
+    image.src = dataUrl;
+  });
+
+  let width = img.width || maxWidth;
+  let height = img.height || maxHeight;
+  const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+  width = Math.round(width * ratio);
+  height = Math.round(height * ratio);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const blob = await new Promise((resolve, reject)=>{
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('Compressione foto non riuscita.')), 'image/jpeg', quality);
+  });
+
+  const baseName = String(file.name || 'bollettino.jpg').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'bollettino';
+  return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+}
+function tpKb(bytes){
+  return Math.max(1, Math.round(Number(bytes || 0) / 1024));
+}
+
 async function salvaBollettinoMaterialeWorker(){
   try{
     if(!requireDb()) return;
@@ -404,17 +450,20 @@ async function salvaBollettinoMaterialeWorker(){
     const nota = ($('bollettinoNota')?.value || '').trim();
     if(!cantiereId){ msg($('matMsg'), 'Scegli il cantiere prima di inviare il bollettino.', 'error'); return; }
     if(!file){ msg($('matMsg'), 'Fai o scegli una foto del bollettino.', 'error'); return; }
-    if(file.size > 8 * 1024 * 1024){ msg($('matMsg'), 'Foto troppo grande. Massimo 8 MB.', 'error'); return; }
+    if(file.size > 12 * 1024 * 1024){ msg($('matMsg'), 'Foto troppo grande. Massimo 12 MB prima della compressione.', 'error'); return; }
 
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
-    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    msg($('matMsg'), 'Comprimo la foto del bollettino...');
+    const fotoCompressa = await tpComprimiFotoBollettino(file);
+    if(fotoCompressa.size > 2 * 1024 * 1024){ msg($('matMsg'), 'Foto ancora troppo grande dopo la compressione. Riprova più vicino al bollettino.', 'error'); return; }
+
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
     const path = `${cantiereId}/${session.user.id}/${safeName}`;
 
-    msg($('matMsg'), 'Carico il bollettino...');
-    const up = await db.storage.from('bollettini-materiale').upload(path, file, {
+    msg($('matMsg'), `Carico il bollettino compresso (${tpKb(fotoCompressa.size)} KB)...`);
+    const up = await db.storage.from('bollettini-materiale').upload(path, fotoCompressa, {
       cacheControl: '3600',
       upsert: false,
-      contentType: file.type || 'image/jpeg'
+      contentType: 'image/jpeg'
     });
     if(up.error) throw up.error;
 
@@ -425,7 +474,7 @@ async function salvaBollettinoMaterialeWorker(){
       collaboratore_nome: collaboratoreTxt,
       cantiere_id: String(cantiereId),
       cantiere_nome: cantiereTxt,
-      nome_file: file.name || safeName,
+      nome_file: fotoCompressa.name || safeName,
       percorso_file: path,
       note: nota,
       stato: 'da_visionare',
@@ -544,17 +593,20 @@ async function salvaBollettinoMaterialeAdmin(){
     const nota = ($('adminBollettinoNota')?.value || '').trim();
     if(!cantiereId){ msg($('adminMaterialeMsg'), 'Scegli il cantiere prima di inviare il bollettino admin.', 'error'); return; }
     if(!file){ msg($('adminMaterialeMsg'), 'Fai o scegli una foto del bollettino.', 'error'); return; }
-    if(file.size > 8 * 1024 * 1024){ msg($('adminMaterialeMsg'), 'Foto troppo grande. Massimo 8 MB.', 'error'); return; }
+    if(file.size > 12 * 1024 * 1024){ msg($('adminMaterialeMsg'), 'Foto troppo grande. Massimo 12 MB prima della compressione.', 'error'); return; }
 
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
-    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    msg($('adminMaterialeMsg'), 'Comprimo la foto del bollettino admin...');
+    const fotoCompressa = await tpComprimiFotoBollettino(file);
+    if(fotoCompressa.size > 2 * 1024 * 1024){ msg($('adminMaterialeMsg'), 'Foto ancora troppo grande dopo la compressione. Riprova più vicino al bollettino.', 'error'); return; }
+
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
     const path = `${cantiereId}/admin/${safeName}`;
 
-    msg($('adminMaterialeMsg'), 'Carico il bollettino admin...');
-    const up = await db.storage.from('bollettini-materiale').upload(path, file, {
+    msg($('adminMaterialeMsg'), `Carico il bollettino admin compresso (${tpKb(fotoCompressa.size)} KB)...`);
+    const up = await db.storage.from('bollettini-materiale').upload(path, fotoCompressa, {
       cacheControl: '3600',
       upsert: false,
-      contentType: file.type || 'image/jpeg'
+      contentType: 'image/jpeg'
     });
     if(up.error) throw up.error;
 
@@ -565,7 +617,7 @@ async function salvaBollettinoMaterialeAdmin(){
       collaboratore_nome: adminTxt,
       cantiere_id: String(cantiereId),
       cantiere_nome: cantiereTxt,
-      nome_file: file.name || safeName,
+      nome_file: fotoCompressa.name || safeName,
       percorso_file: path,
       note: nota,
       stato: 'da_visionare',
