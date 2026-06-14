@@ -861,6 +861,12 @@ function installMaterialeMobileCardsStyle(){
     .tp-bollettini-list{padding:0 12px 12px 12px;}
     .tp-bollettini-list[hidden]{display:none!important;}
     .materiale-card-actions button{min-height:42px;border-radius:14px;padding:10px 14px;}
+    body[data-page="worker"] #materialeBox{overflow:hidden;}
+    body[data-page="worker"] #materialeBox .row{display:flex;flex-direction:column;gap:12px;align-items:stretch;}
+    body[data-page="worker"] #materialeBox .row button{width:100%;min-height:58px;border-radius:16px;font-size:17px;font-weight:900;white-space:normal;line-height:1.2;padding:14px 16px;}
+    body[data-page="worker"] #materialeBox input[type="file"],
+    body[data-page="worker"] #materialeBox textarea,
+    body[data-page="worker"] #materialeBox select{max-width:100%;box-sizing:border-box;}
     @media(max-width:700px){
       .materiale-mobile-toolbar button{flex:1 1 auto;}
       .materiale-mobile-summary{grid-template-columns:1fr 1fr 1fr;}
