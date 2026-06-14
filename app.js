@@ -1013,11 +1013,100 @@ async function initWorker(){
   installVoiceOreButtons();
   installVoiceIaOreButton();
   installMaterialeWorkerUI();
+  installRegieFotoWorkerBox();
   installWorkerSectionButtons();
   enhanceWorkerChoices();
   setTimeout(enhanceWorkerChoices, 250);
   await caricaOreOggi(); await caricaRichiesteWorker(); await caricaSaldoVacanzeWorker();
 }
+
+
+// Foto regie: il collaboratore puo caricare foto subito dopo aver salvato le ore/regia.
+const TP_REGIE_FOTO_BUCKET = 'regie-foto';
+function tpSafeFileName(name){
+  return String(name || 'foto.jpg').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
+}
+function tpRegieFotoBox(){
+  let box = $('regieFotoWorkerBox');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'regieFotoWorkerBox';
+    box.className = 'card hidden';
+    const ref = $('oreOggiBox') || $('oreMsg');
+    if(ref && ref.parentNode) ref.parentNode.insertBefore(box, ref.nextSibling);
+  }
+  return box;
+}
+function installRegieFotoWorkerBox(){
+  if(!document.body || document.body.dataset.page !== 'worker') return;
+  tpRegieFotoBox();
+}
+function mostraBoxFotoRegiaWorker(oreRow){
+  const box = tpRegieFotoBox();
+  if(!box || !oreRow?.id) return;
+  box.classList.remove('hidden');
+  box.dataset.oreLavoroId = oreRow.id;
+  box.dataset.cantiereId = oreRow.cantiere_id || '';
+  box.dataset.collaboratoreId = oreRow.collaboratore_id || session?.user?.id || '';
+  box.dataset.dataLavoro = oreRow.data || todayISO();
+  box.innerHTML = `
+    <h3>Foto regia</h3>
+    <p class="muted">Ore salvate. Se vuoi, carica una o piu foto per questa regia.</p>
+    <input id="regieFotoInputWorker" type="file" accept="image/*" multiple>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" onclick="caricaFotoRegiaWorker()">Carica foto</button>
+      <button type="button" class="secondary" onclick="nascondiFotoRegiaWorker()">Salta</button>
+    </div>
+    <div id="regieFotoWorkerMsg" class="msg"></div>
+  `;
+}
+function nascondiFotoRegiaWorker(){
+  const box = $('regieFotoWorkerBox');
+  if(box) box.classList.add('hidden');
+}
+async function caricaFotoRegiaWorker(){
+  const box = $('regieFotoWorkerBox');
+  const input = $('regieFotoInputWorker');
+  const out = $('regieFotoWorkerMsg');
+  if(!box || !input) return;
+  const files = Array.from(input.files || []);
+  if(!files.length){ msg(out, 'Scegli almeno una foto.', 'error'); return; }
+  if(files.length > 5){ msg(out, 'Massimo 5 foto per volta.', 'error'); return; }
+  const ore_lavoro_id = box.dataset.oreLavoroId;
+  const cantiere_id = box.dataset.cantiereId || null;
+  const collaboratore_id = box.dataset.collaboratoreId || session?.user?.id || null;
+  const data_lavoro = box.dataset.dataLavoro || todayISO();
+  let salvate = 0;
+  try{
+    for(const file of files){
+      if(!file.type || !file.type.startsWith('image/')) throw new Error('Puoi caricare solo immagini.');
+      if(file.size > 8 * 1024 * 1024) throw new Error('Una foto supera 8 MB. Riducila e riprova.');
+      const path = `${cantiere_id || 'senza-cantiere'}/${ore_lavoro_id}/${Date.now()}-${tpSafeFileName(file.name)}`;
+      const up = await db.storage.from(TP_REGIE_FOTO_BUCKET).upload(path, file, {cacheControl:'3600', upsert:false});
+      if(up.error) throw up.error;
+      await q(db.from('regie_foto').insert({
+        ore_lavoro_id:String(ore_lavoro_id),
+        collaboratore_id: collaboratore_id ? String(collaboratore_id) : null,
+        cantiere_id: cantiere_id ? String(cantiere_id) : null,
+        data_lavoro,
+        nome_file:file.name,
+        percorso_file:path,
+        tipo_file:file.type,
+        dimensione_bytes:file.size
+      }));
+      salvate++;
+    }
+    msg(out, `${salvate} foto caricate correttamente.`);
+    input.value = '';
+    await caricaOreOggi();
+  }catch(e){
+    msg(out, 'Errore foto: ' + (e.message || e), 'error');
+  }
+}
+window.installRegieFotoWorkerBox = installRegieFotoWorkerBox;
+window.mostraBoxFotoRegiaWorker = mostraBoxFotoRegiaWorker;
+window.caricaFotoRegiaWorker = caricaFotoRegiaWorker;
+window.nascondiFotoRegiaWorker = nascondiFotoRegiaWorker;
 
 async function caricaOreOggi(){
   const rows=await q(db.from('ore_lavoro').select('*,cantieri(codice,nome),lavorazioni(nome),sotto_lavorazioni(nome)').eq('collaboratore_id',session.user.id).eq('data',todayISO()).neq('stato','annullato'));
@@ -1027,9 +1116,10 @@ async function salvaOreOggi(){
   try{
     const row={collaboratore_id:session.user.id,cantiere_id:$('oreCantiere').value,lavorazione_id:$('oreLav').value,sotto_lavorazione_id:$('oreSotto').value,data:todayISO(),ore_totali:oreToDecimal($('oreTot').value),note:$('oreNote').value,created_by:'collaboratore'};
     if(!row.cantiere_id || !row.lavorazione_id || !row.sotto_lavorazione_id || !row.ore_totali){ msg($('oreMsg'),'Compila cantiere, lavorazione, sotto-lavorazione e ore.','error'); return; }
-    await q(db.from('ore_lavoro').insert(row));
-    msg($('oreMsg'),'Ore salvate correttamente.');
+    const savedOre = await q(db.from('ore_lavoro').insert(row).select('id,collaboratore_id,cantiere_id,data').single());
+    msg($('oreMsg'),'Ore salvate correttamente. Ora puoi caricare foto per questa regia.');
     await caricaOreOggi();
+    mostraBoxFotoRegiaWorker(savedOre);
   }catch(e){ msg($('oreMsg'), e.message, 'error'); }
 }
 window.salvaOreOggi=salvaOreOggi;
@@ -2841,6 +2931,7 @@ function initRegieFirma(){
   fillSelectWithBlankRegie($('regieLavorazione'), (cache.lavorazioni||[]).filter(l=>l.stato==='attivo'), r=>r.nome, 'Tutte le lavorazioni');
   fillSelectWithBlankRegie($('regieSottoLavorazione'), cache.sotto||[], r=>r.nome, 'Tutte le sotto-lavorazioni');
   installRegieQuickSearch();
+  installRegieFotoStyle();
 }
 
 // Ricerca veloce per Admin > Regie / Firme.
@@ -3072,7 +3163,9 @@ async function cercaRegieFirma(){
     if(lav) query = query.eq('lavorazione_id', lav);
     if(sotto) query = query.eq('sotto_lavorazione_id', sotto);
 
-    let rows = (await q(query)).map(regieMappaOreLavoro);
+    const oreRowsRegie = await q(query);
+    let rows = oreRowsRegie.map(regieMappaOreLavoro);
+    await arricchisciRegieConFoto(rows);
 
     const txt = normRegie($('regieTesto')?.value || '');
     if(txt){
@@ -3162,6 +3255,87 @@ async function salvaRegieStampate(){
 }
 window.salvaRegieStampate = salvaRegieStampate;
 
+
+async function arricchisciRegieConFoto(rows){
+  try{
+    const ids = [...new Set((rows || []).map(r=>String(r.ore_lavoro_id || r.id || '')).filter(Boolean))];
+    if(!ids.length) return rows;
+    const foto = await q(db.from('regie_foto').select('ore_lavoro_id').in('ore_lavoro_id', ids));
+    const counts = {};
+    (foto || []).forEach(f=>{
+      const k = String(f.ore_lavoro_id || '');
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    (rows || []).forEach(r=>{ r.foto_count = counts[String(r.ore_lavoro_id || r.id || '')] || 0; });
+    return rows;
+  }catch(e){
+    (rows || []).forEach(r=>{ r.foto_count = 0; });
+    return rows;
+  }
+}
+function regieFotoAdminBox(){
+  let box = $('regieFotoAdminBox');
+  const ref = $('regieRisultati');
+  if(!box && ref && ref.parentNode){
+    box = document.createElement('div');
+    box.id = 'regieFotoAdminBox';
+    box.className = 'card hidden';
+    ref.parentNode.insertBefore(box, ref.nextSibling);
+  }
+  return box;
+}
+async function vediFotoRegiaAdmin(oreLavoroId){
+  const box = regieFotoAdminBox();
+  if(!box || !oreLavoroId) return;
+  box.classList.remove('hidden');
+  box.innerHTML = '<h3>Foto regia</h3><p class="muted">Caricamento foto...</p>';
+  try{
+    const rows = await q(db.from('regie_foto').select('*').eq('ore_lavoro_id', String(oreLavoroId)).order('created_at', {ascending:true}));
+    if(!rows.length){
+      box.innerHTML = '<h3>Foto regia</h3><p class="muted">Nessuna foto caricata.</p>';
+      return;
+    }
+    const items = [];
+    for(const f of rows){
+      const signed = await db.storage.from(TP_REGIE_FOTO_BUCKET).createSignedUrl(f.percorso_file, 60 * 60);
+      const url = signed?.data?.signedUrl || '#';
+      items.push({f, url});
+    }
+    box.innerHTML = `
+      <h3>Foto regia</h3>
+      <p class="muted">${items.length} foto allegate. Aprile o scaricale senza stampare la regia.</p>
+      <div class="regie-foto-grid">
+        ${items.map((x,i)=>`
+          <div class="regie-foto-card">
+            <a href="${x.url}" target="_blank" rel="noopener">
+              <img src="${x.url}" alt="Foto regia ${i+1}">
+            </a>
+            <div><b>${escapeHtml(x.f.nome_file || ('Foto '+(i+1)))}</b></div>
+            <a class="button secondary" href="${x.url}" target="_blank" rel="noopener" download>Scarica</a>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }catch(e){
+    box.innerHTML = `<h3>Foto regia</h3><p class="error">Errore foto: ${escapeHtml(e.message || e)}</p>`;
+  }
+}
+function installRegieFotoStyle(){
+  if($('regieFotoStyle')) return;
+  const st = document.createElement('style');
+  st.id = 'regieFotoStyle';
+  st.textContent = `
+    .regie-foto-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:10px}
+    .regie-foto-card{border:1px solid #ddd;border-radius:12px;padding:10px;background:#fff}
+    .regie-foto-card img{width:100%;height:130px;object-fit:cover;border-radius:10px;margin-bottom:8px}
+    .regie-foto-card .button{display:inline-block;margin-top:8px;text-decoration:none}
+  `;
+  document.head.appendChild(st);
+}
+window.arricchisciRegieConFoto = arricchisciRegieConFoto;
+window.vediFotoRegiaAdmin = vediFotoRegiaAdmin;
+window.installRegieFotoStyle = installRegieFotoStyle;
+
 function renderRegieFirma(rows){
   const ore = rows.reduce((s,r)=>s+oreToDecimal(r.ore_fatte||0),0);
   const giorni = new Set(rows.map(r=>r.data)).size;
@@ -3179,7 +3353,7 @@ function renderRegieFirma(rows){
   if($('regieRisultati')) $('regieRisultati').innerHTML = rows.length ? `<table>
     <tr>
       <th>Data</th><th>Operaio</th><th>Cantiere</th><th>Km</th><th>Lavorazione</th>
-      <th>Sotto-lavorazione</th><th>Ore</th><th>Orario giorno</th><th>Note</th>
+      <th>Sotto-lavorazione</th><th>Ore</th><th>Orario giorno</th><th>Note</th><th>Foto</th>
     </tr>
     ${rows.map(r=>`<tr>
       <td>${r.data}</td>
@@ -3191,6 +3365,7 @@ function renderRegieFirma(rows){
       <td>${fmtOre(r.ore_fatte)}</td>
       <td>${r.ora_inizio||'-'} / ${r.pausa_inizio&&r.pausa_fine?`${r.pausa_inizio}-${r.pausa_fine}`:'-'} / ${r.ora_fine||'-'}</td>
       <td>${escapeHtml(r.note||'')}</td>
+      <td>${r.foto_count ? `<button type="button" class="secondary" onclick="vediFotoRegiaAdmin('${escapeHtml(r.ore_lavoro_id)}')">${r.foto_count} foto</button>` : '-'}</td>
     </tr>`).join('')}
   </table>` : '<p class="muted">Nessuna regia trovata.</p>';
 }
