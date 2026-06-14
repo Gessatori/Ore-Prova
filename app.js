@@ -726,8 +726,7 @@ async function caricaMaterialeAdmin(){
     try{
       bollettini = await q(db.from('bollettini_materiale').select('*').order('created_at',{ascending:false}).limit(300));
     }catch(_e){ bollettini = []; }
-    const bollettinoUploadHtml = renderAdminBollettinoUploadForm(); // Admin: puo inserire bollettini, ma non crea richieste materiale.
-    const bollettiniListaHtml = renderBollettiniMaterialeAdmin(bollettini);
+    const bollettiniHtml = renderAdminBollettinoUploadForm() + renderBollettiniMaterialeAdmin(bollettini);
     const evase = rows.filter(r => r.stato === 'evasa');
     const aperte = rows.filter(r => r.stato === 'in_attesa');
     const toolbar = `<div class="materiale-mobile-toolbar">
@@ -736,28 +735,19 @@ async function caricaMaterialeAdmin(){
     </div>`;
 
     if(!rows.length){
-      box.innerHTML = `${toolbar}
-        ${bollettinoUploadHtml}
-        <section class="tp-richieste-materiale-admin">
-          <h3>Richieste materiale da ordinare</h3>
-          <p class="muted">Nessuna richiesta materiale da ordinare.</p>
-        </section>
-        ${bollettiniListaHtml}`;
+      box.innerHTML = `${toolbar}${bollettiniHtml}<p class="muted">Nessuna richiesta materiale da ordinare.</p>`;
       msg($('adminMaterialeMsg'), 'Materiale caricato.');
       await aggiornaBadgeMaterialeAdmin();
       return;
     }
 
-    box.innerHTML = `${toolbar}
-      ${bollettinoUploadHtml}
-      <section class="tp-richieste-materiale-admin">
-        <h3>Richieste materiale da ordinare</h3>
-        <div class="materiale-mobile-summary">
-          <span><b>${aperte.length}</b> da evadere</span>
-          <span><b>${evase.length}</b> evase</span>
-          <span><b>${rows.length}</b> totali</span>
-        </div>
-        <div class="materiale-mobile-list">
+    box.innerHTML = `${toolbar}${bollettiniHtml}
+      <div class="materiale-mobile-summary">
+        <span><b>${aperte.length}</b> da evadere</span>
+        <span><b>${evase.length}</b> evase</span>
+        <span><b>${rows.length}</b> totali</span>
+      </div>
+      <div class="materiale-mobile-list">
         ${rows.map(r=>{
           const canDelete = r.stato === 'evasa' || r.stato === 'annullata';
           const collaboratore = `${r.collaboratori?.cognome||''} ${r.collaboratori?.nome||''}`.trim() || '-';
@@ -783,9 +773,7 @@ async function caricaMaterialeAdmin(){
             </div>
           </article>`;
         }).join('')}
-        </div>
-      </section>
-      ${bollettiniListaHtml}`;
+      </div>`;
 
     msg($('adminMaterialeMsg'), 'Richieste materiale caricate.');
     await aggiornaBadgeMaterialeAdmin();
