@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tecnoplafon-ore-v26-max-ore-giorno';
+const CACHE_NAME = 'tecnoplafon-ore-v27-blocco-solo-supero-regole';
 const APP_SHELL = [
   './',
   './index.html',
