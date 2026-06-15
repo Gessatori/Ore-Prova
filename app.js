@@ -1504,10 +1504,6 @@ async function tpValidaMaxOreGiorno({collaboratore_id, data, ore_totali, exclude
 
   const cal = await tpGetRegolaCalendarioGiorno(data);
   if(cal){
-    if(cal.consenti_inserimento_ore === false){
-      throw new Error(`Inserimento bloccato per il ${data}: ${cal.nome_festivo || cal.tipo_giorno || 'giorno non lavorativo'}.`);
-    }
-
     const rawMax = (cal.max_ore_inseribili !== null && cal.max_ore_inseribili !== undefined && String(cal.max_ore_inseribili) !== '')
       ? cal.max_ore_inseribili
       : cal.ore_previste;
@@ -1515,8 +1511,14 @@ async function tpValidaMaxOreGiorno({collaboratore_id, data, ore_totali, exclude
     const giaInserite = await tpTotaleOreCollaboratoreGiorno(collaboratore_id, data, excludeIds);
     const nuovoTotale = Math.round((giaInserite + ore) * 100) / 100;
 
+    // Blocco corretto: non blocchiamo solo per consenti_inserimento_ore=false.
+    // Il collaboratore che deve ancora segnare le ore puo salvarle normalmente.
+    // Il blocco scatta solo quando il totale del giorno supera le ore previste/max delle regole.
     if(max >= 0 && nuovoTotale > max + 0.001){
-      throw new Error(`Ore non salvate: il totale del giorno diventerebbe ${fmtOre(nuovoTotale)} ore. Massimo consentito per ${data}: ${fmtOre(max)} ore. Gia inserite: ${fmtOre(giaInserite)} ore.`);
+      const motivo = max <= 0
+        ? (cal.nome_festivo || cal.tipo_giorno || 'giorno non lavorativo')
+        : `massimo consentito ${fmtOre(max)} ore`;
+      throw new Error(`Ore non salvate: il totale del giorno diventerebbe ${fmtOre(nuovoTotale)} ore. Regola ${data}: ${motivo}. Gia inserite: ${fmtOre(giaInserite)} ore.`);
     }
 
     if(outEl && max > 0){
