@@ -1473,12 +1473,100 @@ async function caricaOreOggi(){
   const rows=await q(db.from('ore_lavoro').select('*,cantieri(codice,nome),lavorazioni(nome),sotto_lavorazioni(nome)').eq('collaboratore_id',session.user.id).eq('data',todayISO()).neq('stato','annullato'));
   $('oreOggiBox').innerHTML = rows.length ? `<h3>Ore già inserite oggi</h3><table><tr><th>Cantiere</th><th>Lavorazione</th><th>Ore</th><th>Note</th></tr>${rows.map(r=>`<tr><td>${escapeHtml(r.cantieri?.codice||'')} ${escapeHtml(r.cantieri?.nome||'')}</td><td>${escapeHtml(r.lavorazioni?.nome||'')} / ${escapeHtml(r.sotto_lavorazioni?.nome||'')}</td><td>${fmtOre(r.ore_totali)}</td><td>${escapeHtml(r.note||'')}</td></tr>`).join('')}</table>` : '<p class="muted">Nessuna ora inserita oggi.</p>';
 }
+
+
+// Controllo regole calendario: blocca inserimenti oltre il massimo ore giornaliero.
+// Usa public.calendario_giorni: ore_previste, max_ore_inseribili e consenti_inserimento_ore.
+async function tpGetRegolaCalendarioGiorno(data){
+  if(!db || !data) return null;
+  try{
+    return await q(db.from('calendario_giorni').select('*').eq('data', data).maybeSingle());
+  }catch(e){
+    // Se la tabella/regola non e disponibile non blocchiamo il salvataggio,
+    // ma la validazione rimane attiva appena il calendario e configurato.
+    console.warn('Regola calendario non disponibile:', e);
+    return null;
+  }
+}
+async function tpTotaleOreCollaboratoreGiorno(collaboratoreId, data, excludeIds){
+  if(!db || !collaboratoreId || !data) return 0;
+  const exclude = new Set((Array.isArray(excludeIds) ? excludeIds : [excludeIds]).filter(Boolean).map(String));
+  const rows = await q(db.from('ore_lavoro')
+    .select('id,ore_totali')
+    .eq('collaboratore_id', collaboratoreId)
+    .eq('data', data)
+    .neq('stato','annullato'));
+  return rows.reduce((sum, r)=> exclude.has(String(r.id)) ? sum : sum + oreToDecimal(r.ore_totali || 0), 0);
+}
+async function tpValidaMaxOreGiorno({collaboratore_id, data, ore_totali, excludeIds, outEl}){
+  const ore = oreToDecimal(ore_totali || 0);
+  if(!collaboratore_id || !data || !ore) throw new Error('Compila collaboratore, data e ore.');
+
+  const cal = await tpGetRegolaCalendarioGiorno(data);
+  if(cal){
+    if(cal.consenti_inserimento_ore === false){
+      throw new Error(`Inserimento bloccato per il ${data}: ${cal.nome_festivo || cal.tipo_giorno || 'giorno non lavorativo'}.`);
+    }
+
+    const rawMax = (cal.max_ore_inseribili !== null && cal.max_ore_inseribili !== undefined && String(cal.max_ore_inseribili) !== '')
+      ? cal.max_ore_inseribili
+      : cal.ore_previste;
+    const max = oreToDecimal(rawMax || 0);
+    const giaInserite = await tpTotaleOreCollaboratoreGiorno(collaboratore_id, data, excludeIds);
+    const nuovoTotale = Math.round((giaInserite + ore) * 100) / 100;
+
+    if(max >= 0 && nuovoTotale > max + 0.001){
+      throw new Error(`Ore non salvate: il totale del giorno diventerebbe ${fmtOre(nuovoTotale)} ore. Massimo consentito per ${data}: ${fmtOre(max)} ore. Gia inserite: ${fmtOre(giaInserite)} ore.`);
+    }
+
+    if(outEl && max > 0){
+      const rimaste = Math.max(0, Math.round((max - nuovoTotale) * 100) / 100);
+      msg(outEl, `Controllo regole OK: totale giorno ${fmtOre(nuovoTotale)} / massimo ${fmtOre(max)} ore. Restano ${fmtOre(rimaste)} ore.`);
+    }
+  }
+}
+
 async function salvaOreOggi(){
   try{
     const row={collaboratore_id:session.user.id,cantiere_id:$('oreCantiere').value,lavorazione_id:$('oreLav').value,sotto_lavorazione_id:$('oreSotto').value,data:todayISO(),ore_totali:oreToDecimal($('oreTot').value),note:$('oreNote').value,created_by:'collaboratore'};
     if(!row.cantiere_id || !row.lavorazione_id || !row.sotto_lavorazione_id || !row.ore_totali){ msg($('oreMsg'),'Compila cantiere, lavorazione, sotto-lavorazione e ore.','error'); return; }
-    const savedOre = await q(db.from('ore_lavoro').insert(row).select('id,collaboratore_id,cantiere_id,data').single());
-    msg($('oreMsg'),'Ore salvate correttamente. Ora puoi caricare foto per questa regia.');
+
+    const same = await q(db.from('ore_lavoro')
+      .select('id,created_at')
+      .eq('collaboratore_id', row.collaboratore_id)
+      .eq('data', row.data)
+      .eq('cantiere_id', row.cantiere_id)
+      .eq('lavorazione_id', row.lavorazione_id)
+      .eq('sotto_lavorazione_id', row.sotto_lavorazione_id)
+      .neq('stato','annullato')
+      .order('created_at', {ascending:true}));
+
+    const primaryId = same.length ? same[0].id : null;
+    const duplicateIds = same.slice(1).map(r=>r.id).filter(Boolean);
+    await tpValidaMaxOreGiorno({
+      collaboratore_id: row.collaboratore_id,
+      data: row.data,
+      ore_totali: row.ore_totali,
+      excludeIds: same.map(r=>r.id),
+      outEl: $('oreMsg')
+    });
+
+    let savedOre;
+    if(primaryId){
+      savedOre = await q(db.from('ore_lavoro').update({
+        ore_totali: row.ore_totali,
+        note: row.note,
+        created_by: row.created_by,
+        updated_at: new Date().toISOString()
+      }).eq('id', primaryId).select('id,collaboratore_id,cantiere_id,data').single());
+      if(duplicateIds.length){
+        await q(db.from('ore_lavoro').update({stato:'annullato', updated_at:new Date().toISOString()}).in('id', duplicateIds));
+      }
+      msg($('oreMsg'),'Ore corrette correttamente. La riga esistente e stata aggiornata senza sommare doppio.');
+    } else {
+      savedOre = await q(db.from('ore_lavoro').insert(row).select('id,collaboratore_id,cantiere_id,data').single());
+      msg($('oreMsg'),'Ore salvate correttamente. Ora puoi caricare foto per questa regia.');
+    }
     await caricaOreOggi();
     mostraBoxFotoRegiaWorker(savedOre);
   }catch(e){ msg($('oreMsg'), e.message, 'error'); }
@@ -2198,6 +2286,14 @@ async function adminSalvaOre(){
       .neq('stato','annullato')
       .order('created_at', {ascending:true}));
 
+    await tpValidaMaxOreGiorno({
+      collaboratore_id: row.collaboratore_id,
+      data: row.data,
+      ore_totali: row.ore_totali,
+      excludeIds: same.map(r=>r.id),
+      outEl: $('admOreMsg')
+    });
+
     if(same.length){
       const primaryId = same[0].id;
       const duplicateIds = same.slice(1).map(r=>r.id).filter(Boolean);
@@ -2328,6 +2424,14 @@ async function salvaRigaOreAdmin(id){
       msg($('admOreMsg'),'Compila cantiere/regia, lavorazione, sotto-lavorazione e ore.', 'error');
       return;
     }
+    const oldRow = await q(db.from('ore_lavoro').select('collaboratore_id,data').eq('id', id).single());
+    await tpValidaMaxOreGiorno({
+      collaboratore_id: oldRow.collaboratore_id,
+      data: oldRow.data,
+      ore_totali: ore,
+      excludeIds: [id],
+      outEl: $('admOreMsg')
+    });
     await q(db.from('ore_lavoro').update({cantiere_id, lavorazione_id, sotto_lavorazione_id, ore_totali:ore, note, updated_at:new Date().toISOString()}).eq('id', id));
     await tpSincronizzaSupportoCantieriDaGestionale();
     msg($('admOreMsg'),'Riga ore aggiornata e sincronizzata nei cantieri.');
